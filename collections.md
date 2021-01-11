@@ -1,5 +1,5 @@
 # *collections*
-The module ***collections*** helps with working with collections.
+This module of the package [`atlantis`](README.md) helps with working with collections.
 
 ## *`flatten`*
 ```python
