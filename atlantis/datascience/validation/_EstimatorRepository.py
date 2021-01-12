@@ -43,13 +43,13 @@ class EstimatorGrid:
 	@property
 	def Estimator(self):
 		"""
-		:rtype: LogisticRegression or LinearRegression
+		:rtype: type
 		"""
 		return self._estimator
 
 	@property
 	def name(self):
-		return self.Estimator.__class__.__name__
+		return self.Estimator.__name__
 
 	def append(self, parameters):
 		"""
@@ -94,7 +94,7 @@ class EstimatorGrid:
 
 class EstimatorRepository:
 	def __init__(self, estimator=None, parameters=None):
-		self._estimator_grids = {}
+		self._estimator_grids_dictionary = {}
 		if estimator is not None and parameters is not None:
 			self.append(estimator=estimator, parameters=parameters)
 
@@ -113,22 +113,22 @@ class EstimatorRepository:
 
 	def append(self, estimator, parameters):
 		"""
-		:type estimator: LogisticRegression or LinearRegression
+		:type estimator: type
 		:type parameters: dict
 		"""
-		class_name = estimator.__class__.__name__
+		class_name = estimator.__name__
 
-		if class_name not in self._dictionary:
-			self.estimator_grids[class_name] = EstimatorGrid(estimator=estimator)
+		if class_name not in self._estimator_grids_dictionary:
+			self._estimator_grids_dictionary[class_name] = EstimatorGrid(estimator=estimator)
 
-		self.estimator_grids[class_name].append(parameters=parameters)
+		self._estimator_grids_dictionary[class_name].append(parameters=parameters)
 
 	@property
 	def estimator_grids(self):
 		"""
 		:rtype: list[EstimatorGrid]
 		"""
-		return list(self.estimator_grids.values())
+		return list(self._estimator_grids_dictionary.values())
 
 	@property
 	def estimator_dictionaries(self):

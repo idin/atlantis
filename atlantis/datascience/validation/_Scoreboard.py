@@ -1,4 +1,5 @@
-from ._EstimatorRepository import EstimatorRepository, EstimatorGrid
+from ._EstimatorRepository import EstimatorRepository
+from ..parallel_computing import Task
 from pandas import DataFrame
 
 
@@ -58,11 +59,25 @@ class Scoreboard:
 		"""
 		return self._estimator_repository
 
-	def add_score(self, estimator_name, estimator_id, data_id, score_dictionary):
-		score = self._unmeasured[(estimator_name, estimator_id, data_id)]
-		self._measured[(estimator_name, estimator_id, data_id)] = score
+	def add_score(self, estimator_type, estimator_id, data_id, score_dictionary):
+		score = self._unmeasured[(estimator_type, estimator_id, data_id)]
+		self._measured[(estimator_type, estimator_id, data_id)] = score
 		score.score_dictionary = score_dictionary
-		del self._unmeasured[(estimator_name, estimator_id, data_id)]
+		del self._unmeasured[(estimator_type, estimator_id, data_id)]
+
+	def add_task_score(self, task):
+		"""
+		:type task: Task
+		"""
+		if task.status == 'done':
+			self.add_score(
+				estimator_type=task.estimator_type,
+				estimator_id=task.estimator_id,
+				data_id=task.data_id,
+				score_dictionary=task.evaluation
+			)
+		else:
+			raise RuntimeError(f'{task} is not done, it is {task.status}')
 
 	@property
 	def data(self):

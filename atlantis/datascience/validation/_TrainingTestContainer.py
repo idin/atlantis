@@ -58,8 +58,6 @@ class TrainingTestContainer(DataContainer):
 		model.fit(self.training_data[x_columns], self.training_data[y_column])
 		return model
 
-	train = fit
-
 	def get_evaluation(self, estimator, estimator_id, x_columns=None, y_column=None, problem_type=None, main_metric=None):
 		"""
 		:type estimator: LinearRegression or LogisticRegression
