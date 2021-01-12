@@ -18,3 +18,4 @@ from ._find_duplicated_columns import find_duplicated_columns
 from ._join_and_preserve_types import join_and_preserve_types
 from ._bring_to_front import move_columns, bring_to_front, send_to_back
 from ._create_data_from_combinations import create_data_from_combinations
+from ._read_excel import read_excel
