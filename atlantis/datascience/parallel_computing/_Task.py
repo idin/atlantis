@@ -32,10 +32,21 @@ class Task:
 		self._starting_time = None
 		self._ending_time = None
 		self._error = None
+		self._worker_id = None
+
+	def __repr__(self):
+		return f'Task: {self.id} ({self._status})'
+
+	def __str__(self):
+		return repr(self)
 
 	@property
 	def id(self):
 		return self.estimator_type, self.estimator_id, self.data_id, self.y_column
+
+	@property
+	def status(self):
+		return self._status
 
 	def __hash__(self):
 		return hash(self.id)
@@ -84,9 +95,10 @@ class Task:
 		self._status = 'started'
 		self._starting_time = datetime.now()
 
-	def end(self):
+	def end(self, worker_id):
 		self._ending_time = datetime.now()
 		self._status = 'done'
+		self._worker_id = worker_id
 
 	def get_elapsed(self, unit='ms'):
 		if self._starting_time is not None and self._ending_time is not None:
@@ -112,6 +124,7 @@ class Task:
 			'estimator_type': self.estimator_type,
 			'estimator_id': self.estimator_id,
 			'data_id': self.data_id,
+			'worker_id': self._worker_id,
 			'status': self._status,
 			'starting_time': self.starting_time,
 			'ending_time': self.ending_time,

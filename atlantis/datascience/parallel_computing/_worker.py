@@ -9,7 +9,7 @@ def worker(worker_id, data_namespace, to_do, doing, done, proceed, status, evalu
 	:type worker_id: int or str
 	:type data_namespace: Namespace
 	:type to_do: list[Task]
-	:type doing: dict[(str, int), Task]
+	:type doing: dict[int or str, Task]
 	:type done: list[Task]
 	:type proceed: dict[str, bool]
 	:type status: dict[str, str]
@@ -30,7 +30,7 @@ def worker(worker_id, data_namespace, to_do, doing, done, proceed, status, evalu
 	while proceed[worker_id]:
 		try:
 			task = to_do.pop(0)
-			doing[task.id] = task
+			doing[worker_id] = task
 			status[worker_id] = 'active'
 
 		except IndexError:
@@ -41,23 +41,23 @@ def worker(worker_id, data_namespace, to_do, doing, done, proceed, status, evalu
 
 			task.start()
 			estimator = task.estimator_class(**task.kwargs)
-			training_data = data_namespace[f'{task.data_id}_training']
+			training_data = getattr(data_namespace, f'{task.data_id}_training')
 			training_x = training_data.drop(columns=task.y_column)
 			training_y = training_data[task.y_column]
 			estimator.fit(X=training_x, y=training_y)
 
-			test_data = data_namespace[f'{task.data_id}_test']
+			test_data = getattr(data_namespace, f'{task.data_id}_test')
 			test_x = test_data.drop(columns=task.y_column)
 			actual = test_data[task.y_column]
 			predicted = estimator.predict(test_x)
 
 			task.evaluation = evaluation_function(actual=actual, predicted=predicted)
-			task.end()
+			task.end(worker_id=worker_id)
 
 		except Exception as error:
 			task.set_error(error=error)
 
-		del doing[task.id]
+		del doing[worker_id]
 		done.append(task)
 
 	status[worker_id] = 'ended'

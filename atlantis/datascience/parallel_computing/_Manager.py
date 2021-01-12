@@ -1,6 +1,7 @@
 import multiprocess
 from pandas import DataFrame
-from ...time import get_elapsed
+from time import sleep
+from ...time import get_elapsed, get_now
 from ...time.progress import ProgressBar
 from ._worker import worker
 from ._Task import Task
@@ -58,30 +59,35 @@ class Manager:
 				kwargs=kwargs, y_column=y_column
 			)
 
-	def start(self, num_workers):
+	def add_worker(self):
+		"""
+		:rtype: multiprocess.Process
+		"""
+		worker_id = self.generate_worker_id()
+		process = multiprocess.Process(
+			target=worker,
+			kwargs={
+				'worker_id': worker_id,
+				'data_namespace': self._data_namespace,
+				'to_do': self._to_do,
+				'doing': self._doing,
+				'done': self._done,
+				'proceed': self._proceed_worker,
+				'status': self._worker_status,
+				'evaluation_function': self._evaluation_function
+			}
+		)
+		self._processes[worker_id] = process
+		process.start()
+		return process
+
+	def add_workers(self, num_workers):
 		"""
 		:type num_workers: int
 		"""
 		self.process_done_tasks()
-
 		for i in range(num_workers):
-			worker_id = self.generate_worker_id()
-			process = multiprocess.Process(
-				target=worker,
-				kwargs={
-					'worker_id': worker_id,
-					'data_namespace': self._data_namespace,
-					'to_do': self._to_do,
-					'done': self._done,
-					'proceed': self._proceed_worker,
-					'status': self._worker_status,
-					'evaluation_function': self._evaluation_function
-				}
-			)
-			self._processes[worker_id] = process
-			process.start()
-
-		return self._done
+			self.add_worker()
 
 	def process_done_tasks(self):
 		while True:
@@ -172,7 +178,6 @@ class Manager:
 
 		return ' '.join(result)
 
-
 	def _update_progress_bar(self, progress_bar):
 		self.process_done_tasks()
 		to_do_count = self.count_to_do()
@@ -182,14 +187,23 @@ class Manager:
 			to_do_time = self.get_to_do_time()
 			done_time = self.get_done_time()
 			progress_bar.set_total(to_do_time + done_time)
-			progress_bar.show(amount=done_time, text=f'{to_do_count} / {to_do_count + done_count} | {self.get_num_workers()}')
+			progress_bar.show(
+				amount=done_time,
+				text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_num_workers()}'
+			)
 		else:
 			progress_bar.set_total(to_do_count + done_count)
-			progress_bar.show(amount=to_do_count, text=f'{to_do_count} / {to_do_count + done_count} | {self.get_num_workers()}')
+			progress_bar.show(
+				amount=done_count,
+				text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_num_workers()}'
+			)
 
 		return to_do_count
 
-	def show_progress(self):
+	def show_progress(self, time_limit=None, time_unit='s'):
+		if len(self._processes) == 0:
+			raise RuntimeError('there are no workers')
+		start_time = get_now()
 		progress_bar = ProgressBar(total=100)
 		progress_bar.show(amount=0)
 		try:
@@ -199,30 +213,41 @@ class Manager:
 					progress_bar.set_total(total=100)
 					progress_bar.show(amount=100)
 					break
+				if time_limit is not None and get_elapsed(start=start_time, unit=time_unit) > time_limit:
+					break
+				sleep(0.1)
 
 		except KeyboardInterrupt:
 			self._update_progress_bar(progress_bar=progress_bar)
 
+	@property
 	def worker_status_table(self):
 		return DataFrame.from_records([
 			{'id': worker_id, 'status': worker_status}
 			for worker_id, worker_status in self._worker_status.items()
 		])
 
-	def task_table(self):
+	@property
+	def tasks(self):
+		"""
+		:rtype: list[Task]
+		"""
 		d = {}
 		for task in self._processed:
 			d[task.id] = task
 		for task in self._done:
 			d[task.id] = task
-		for task in self._doing.values:
+		for task in self._doing.values():
 			d[task.id] = task
 		for task in self._to_do:
 			d[task.id] = task
+		return list(d.values())
 
+	@property
+	def task_table(self):
 		return DataFrame.from_records([
 			task.record
-			for task in d.values()
+			for task in self.tasks
 		])
 
 	def stop(self, worker_id=None):
@@ -235,18 +260,27 @@ class Manager:
 
 		return self._done
 
-	def terminate(self, worker_id=None):
+	def terminate(self, worker_id=None, echo=1):
 		if worker_id is not None:
+			if worker_id not in self._processes:
+				raise KeyError(f'worker {worker_id}')
+
 			self._proceed_worker[worker_id] = False
 			self._processes[worker_id].terminate()
+			self._to_do.append(self._doing[worker_id])
+			del self._doing[worker_id]
+			del self._processes[worker_id]
 			if self._worker_status[worker_id] != 'ended':
 				self._worker_status[worker_id] = 'terminated'
+				if echo:
+					print(f'worker {worker_id} terminated!')
+			else:
+				if echo:
+					print(f'worker {worker_id} already ended.')
+
 		else:
-			for _worker_id in self._processes.keys():
-				self.terminate(worker_id=_worker_id)
-				if self._worker_status[_worker_id] != 'ended':
-					self._worker_status[_worker_id] = 'terminated'
+			worker_ids = list(self._processes.keys())
+			for _worker_id in worker_ids:
+				self.terminate(worker_id=_worker_id, echo=echo)
 
 		return self._done
-
-

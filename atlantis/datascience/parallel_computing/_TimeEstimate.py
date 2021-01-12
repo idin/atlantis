@@ -10,6 +10,10 @@ class TimeEstimate:
 	def get_mean(self):
 		return self._total / self._count
 
+	@property
+	def mean(self):
+		return self.get_mean()
+
 	def __repr__(self):
 		return str(self.mean)
 
