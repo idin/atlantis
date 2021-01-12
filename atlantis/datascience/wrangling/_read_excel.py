@@ -1,6 +1,6 @@
 import pandas as pd
-from txt import convert_camel_to_snake
-from .wrangling import standardize_columns as standardize
+from ...text import convert_camel_to_snake
+from ._standardize_columns import standardize_columns as standardize
 
 
 def read_excel(path, standardize_columns=True):
