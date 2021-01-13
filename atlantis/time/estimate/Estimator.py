@@ -8,7 +8,7 @@ from random import randint, random, choice
 
 from ...hash import hash_object
 from ...functions import get_function_arguments
-from ...datascience.preprocessing import Polynomial, Normalizer
+from ...ds.preprocessing import Polynomial, Normalizer
 
 from .create_arguments import create_arguments
 from .Measurement import Measurement
