@@ -1,4 +1,4 @@
-from ._Task import Task
+from ._Task import TrainingTestTask
 from ._TimeEstimate import TimeEstimate, MissingTimeEstimate
 from ..evaluation import evaluate_regression, evaluate_classification
 from ..validation import Scoreboard
@@ -85,7 +85,7 @@ class Project:
 
 	def add_time_estimate(self, task):
 		"""
-		:type task: Task
+		:type task: TrainingTestTask
 		"""
 		if task.estimator_type not in self.time_estimates:
 			self.time_estimates[task.estimator_type] = TimeEstimate()

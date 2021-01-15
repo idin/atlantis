@@ -1,4 +1,4 @@
-from ..parallel_computing import Task
+from ..parallel_computing import TrainingTestTask
 from pandas import DataFrame
 
 
@@ -95,7 +95,7 @@ class Scoreboard:
 
 	def add_task_score(self, task):
 		"""
-		:type task: Task
+		:type task: TrainingTestTask
 		"""
 		if task.status == 'done':
 			self.add_score(

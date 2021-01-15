@@ -5,7 +5,7 @@ import random
 from ...time import get_elapsed, get_now
 from ...time.progress import ProgressBar
 from ._worker import worker
-from ._Task import Task
+from ._Task import TrainingTestTask
 from ._TimeEstimate import MissingTimeEstimate
 from ._Project import Project
 from ..validation import Scoreboard
@@ -93,7 +93,7 @@ class Processor:
 	def add_task(self, estimator_id, estimator_class, kwargs, project_name, data_id):
 		if data_id not in self.projects[project_name].data_ids:
 			raise KeyError(f'data {data_id} does not exist!')
-		task = Task(
+		task = TrainingTestTask(
 			estimator_id=estimator_id, estimator_class=estimator_class, kwargs=kwargs,
 			project_name=project_name, data_id=data_id, y_column=self.projects[project_name].y_column
 		)
@@ -282,7 +282,7 @@ class Processor:
 	@property
 	def tasks(self):
 		"""
-		:rtype: list[Task]
+		:rtype: list[TrainingTestTask]
 		"""
 		d = {}
 		for task in self._processed:

@@ -3,9 +3,46 @@ from datetime import datetime
 
 
 class Task:
+	def __init__(self, project_name):
+		self._project_name = project_name
+		self._worker_id = None
+
+	@property
+	def starting_time(self):
+		return self._starting_time
+
+	@property
+	def ending_time(self):
+		return self._ending_time
+
+	def start(self):
+		self._status = 'started'
+		self._starting_time = datetime.now()
+
+	def end(self, worker_id):
+		self._ending_time = datetime.now()
+		self._status = 'done'
+		self._worker_id = worker_id
+
+	def get_elapsed(self, unit='ms'):
+		if self._starting_time is not None and self._ending_time is not None:
+			return get_elapsed(start=self.starting_time, end=self.ending_time, unit=unit)
+		else:
+			return None
+
+	def set_error(self, error):
+		self._error = error
+		self._status = 'error'
+
+	def is_done(self):
+		return self._status == 'done'
+
+
+class TrainingTestTask(Task):
 	def __init__(
 			self, estimator_id, project_name, data_id, estimator_class, kwargs, y_column
 	):
+		super().__init__(project_name=project_name)
 		if not isinstance(estimator_id, (str, int)):
 			raise TypeError('estimator_id should be an int or str')
 
@@ -25,7 +62,7 @@ class Task:
 			raise TypeError('y_column should be a str')
 
 		self._estimator_id = estimator_id
-		self._project_name = project_name
+
 		self._data_id = data_id
 		self._estimator_class = estimator_class
 		self._kwargs = kwargs
@@ -36,7 +73,7 @@ class Task:
 		self._starting_time = None
 		self._ending_time = None
 		self._error = None
-		self._worker_id = None
+
 
 	def __repr__(self):
 		return f'Task: {self.id} ({self._status})'
@@ -90,36 +127,6 @@ class Task:
 	@evaluation.setter
 	def evaluation(self, evaluation):
 		self._evaluation = evaluation
-
-	@property
-	def starting_time(self):
-		return self._starting_time
-
-	@property
-	def ending_time(self):
-		return self._ending_time
-
-	def start(self):
-		self._status = 'started'
-		self._starting_time = datetime.now()
-
-	def end(self, worker_id):
-		self._ending_time = datetime.now()
-		self._status = 'done'
-		self._worker_id = worker_id
-
-	def get_elapsed(self, unit='ms'):
-		if self._starting_time is not None and self._ending_time is not None:
-			return get_elapsed(start=self.starting_time, end=self.ending_time, unit=unit)
-		else:
-			return None
-
-	def set_error(self, error):
-		self._error = error
-		self._status = 'error'
-
-	def is_done(self):
-		return self._status == 'done'
 
 	@property
 	def record(self):

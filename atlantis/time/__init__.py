@@ -7,6 +7,8 @@ from .date import YearMonth
 from .date import get_number_of_days
 from .date import convert_string_to_date
 from .date import parse_date
+from .date import get_week_number
+from .date import get_date_mean
 
 from .time import get_now, get_time
 from .time import convert, get_elapsed, get_elapsed_months, get_elapsed_years

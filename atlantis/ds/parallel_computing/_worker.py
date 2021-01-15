@@ -1,7 +1,7 @@
 from pandas import DataFrame
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from multiprocess.managers import Namespace
-from ._Task import Task
+from ._Task import TrainingTestTask
 from ._Project import Project
 
 
@@ -9,7 +9,7 @@ def worker(worker_id, data_namespace, to_do, doing, done, proceed, status, probl
 	"""
 	:type worker_id: int or str
 	:type data_namespace: Namespace
-	:type to_do: list[Task]
+	:type to_do: list[TrainingTestTask]
 	:type doing: dict[int or str, Task]
 	:type done: list[Task]
 	:type proceed: dict[str, bool]
