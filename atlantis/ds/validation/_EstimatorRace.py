@@ -45,5 +45,5 @@ class EstimatorRace:
 			self._estimator_repository = EstimatorRepository(estimator=model, parameters=parameters)
 
 		else:
-			self.estimator_repository.append(estimator=model, parameters=parameters)
+			self.estimator_repository.append(estimator=model, kwargs=parameters)
 

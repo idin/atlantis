@@ -4,10 +4,13 @@ from datetime import datetime
 
 class Task:
 	def __init__(
-			self, estimator_id, data_id, estimator_class, kwargs, y_column
+			self, estimator_id, project_name, data_id, estimator_class, kwargs, y_column
 	):
 		if not isinstance(estimator_id, (str, int)):
 			raise TypeError('estimator_id should be an int or str')
+
+		if not isinstance(project_name, (str, int)):
+			raise TypeError('project_name should be either an int or a str')
 
 		if not isinstance(data_id, (int, str)):
 			raise TypeError('data_id should be an int or str')
@@ -22,6 +25,7 @@ class Task:
 			raise TypeError('y_column should be a str')
 
 		self._estimator_id = estimator_id
+		self._project_name = project_name
 		self._data_id = data_id
 		self._estimator_class = estimator_class
 		self._kwargs = kwargs
@@ -42,7 +46,7 @@ class Task:
 
 	@property
 	def id(self):
-		return self.estimator_type, self.estimator_id, self.data_id, self.y_column
+		return self.estimator_type, self.estimator_id, self.project_name, self.data_id, self.y_column
 
 	@property
 	def status(self):
@@ -56,12 +60,16 @@ class Task:
 		return self._estimator_id
 
 	@property
+	def project_name(self):
+		return self._project_name
+
+	@property
 	def estimator_class(self):
 		return self._estimator_class
 
 	@property
 	def estimator_type(self):
-		return self._estimator_class.__name__
+		return self.estimator_class.__name__
 
 	@property
 	def data_id(self):
@@ -121,6 +129,7 @@ class Task:
 		evaluation = self.evaluation or {}
 
 		return {
+			'project_name': self.project_name,
 			'estimator_type': self.estimator_type,
 			'estimator_id': self.estimator_id,
 			'data_id': self.data_id,

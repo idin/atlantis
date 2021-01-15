@@ -2,9 +2,10 @@ from pandas import DataFrame
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from multiprocess.managers import Namespace
 from ._Task import Task
+from ._Project import Project
 
 
-def worker(worker_id, data_namespace, to_do, doing, done, proceed, status, evaluation_function):
+def worker(worker_id, data_namespace, to_do, doing, done, proceed, status, problems):
 	"""
 	:type worker_id: int or str
 	:type data_namespace: Namespace
@@ -13,7 +14,7 @@ def worker(worker_id, data_namespace, to_do, doing, done, proceed, status, evalu
 	:type done: list[Task]
 	:type proceed: dict[str, bool]
 	:type status: dict[str, str]
-	:type evaluation_function: callable
+	:type problems: dict[str, Project]
 
 	each item in the queue is tuple or list that has:
 	estimator_id, data_id, estimator class, dictionary of kwargs, training, test
@@ -51,6 +52,8 @@ def worker(worker_id, data_namespace, to_do, doing, done, proceed, status, evalu
 			actual = test_data[task.y_column]
 			predicted = estimator.predict(test_x)
 
+			problem = problems[task.project_name]
+			evaluation_function = problem.evaluation_function
 			task.evaluation = evaluation_function(actual=actual, predicted=predicted)
 			task.end(worker_id=worker_id)
 

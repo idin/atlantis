@@ -1,4 +1,3 @@
-from ._EstimatorRepository import EstimatorRepository
 from ..parallel_computing import Task
 from pandas import DataFrame
 
@@ -32,37 +31,66 @@ class Score:
 
 
 class Scoreboard:
-	def __init__(self, estimator_repository, data_ids, main_metric=None, lowest_is_best=True, best_score=0):
-		self._estimator_repository = estimator_repository
-		self._data_ids = data_ids
+	def __init__(self, main_metric=None, lowest_is_best=True, best_score=0):
+		self._estimators = set()
+		self._data_ids = set()
 
 		if not lowest_is_best and best_score == 0:
 			raise ValueError(f'best score of 0 does not work when the highest score is the best!')
 
 		self._best_score = best_score
 
+		self._all_combinations = set()
 		self._measured = {}
-		self._unmeasured = {
-			(estimator_grid.name, estimator_id, data_id): Score(main_metric=main_metric)
-			for estimator_grid in self.estimator_repository.estimator_grids
-			for estimator_id in estimator_grid.estimator_ids
-			for data_id in self._data_ids
-		}
+		self._unmeasured = {}
 
 		self._lowest_is_best = lowest_is_best
 		self._main_metric = main_metric
 
+	def _add_estimator_data_combination(self, estimator_type, estimator_id, data_id):
+		key = estimator_type, estimator_id, data_id
+		if key not in self._all_combinations:
+			self._all_combinations.add(key)
+			self._unmeasured[key] = Score(main_metric=self._main_metric)
+
+	def add_estimator(self, estimator_type, estimator_id):
+		key = estimator_type, estimator_id
+		if key in self._estimators:
+			raise KeyError(f'estimator {estimator_type}, {estimator_id} already exists!')
+		self._estimators.add(key)
+		for data_id in self.data_ids:
+			self._add_estimator_data_combination(
+				estimator_type=estimator_type, estimator_id=estimator_id, data_id=data_id
+			)
+
+	def add_data_id(self, data_id):
+		if data_id in self._data_ids:
+			raise KeyError(f'data_id: {data_id} already exists!')
+		self._data_ids.add(data_id)
+		for estimator_type, estimator_id in self.estimators:
+			self._add_estimator_data_combination(
+				estimator_type=estimator_type, estimator_id=estimator_id, data_id=data_id
+			)
+
 	@property
-	def estimator_repository(self):
+	def data_ids(self):
 		"""
-		:rtype: EstimatorRepository
+		:rtype: set
 		"""
-		return self._estimator_repository
+		return self._data_ids
+
+	@property
+	def estimators(self):
+		"""
+		:rtype: set[(str, int)]
+		"""
+		return self._estimators
 
 	def add_score(self, estimator_type, estimator_id, data_id, score_dictionary):
 		score = self._unmeasured[(estimator_type, estimator_id, data_id)]
-		self._measured[(estimator_type, estimator_id, data_id)] = score
 		score.score_dictionary = score_dictionary
+
+		self._measured[(estimator_type, estimator_id, data_id)] = score
 		del self._unmeasured[(estimator_type, estimator_id, data_id)]
 
 	def add_task_score(self, task):

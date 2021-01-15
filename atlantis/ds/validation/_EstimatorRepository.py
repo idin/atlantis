@@ -96,7 +96,7 @@ class EstimatorRepository:
 	def __init__(self, estimator=None, parameters=None):
 		self._estimator_grids_dictionary = {}
 		if estimator is not None and parameters is not None:
-			self.append(estimator=estimator, parameters=parameters)
+			self.append(estimator=estimator, kwargs=parameters)
 
 	def __contains__(self, item):
 		"""
@@ -111,17 +111,17 @@ class EstimatorRepository:
 			else:
 				return estimator_id in self.estimator_grids[estimator_name]
 
-	def append(self, estimator, parameters):
+	def append(self, estimator, kwargs):
 		"""
 		:type estimator: type
-		:type parameters: dict
+		:type kwargs: dict
 		"""
 		class_name = estimator.__name__
 
 		if class_name not in self._estimator_grids_dictionary:
 			self._estimator_grids_dictionary[class_name] = EstimatorGrid(estimator=estimator)
 
-		self._estimator_grids_dictionary[class_name].append(parameters=parameters)
+		self._estimator_grids_dictionary[class_name].append(kwargs=kwargs)
 
 	@property
 	def estimator_grids(self):

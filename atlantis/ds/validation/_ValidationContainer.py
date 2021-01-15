@@ -1,5 +1,6 @@
 from pandas import DataFrame
 from ._DataContainer import get_display_function, DataContainer
+from ._TrainingTestContainer import TrainingTestContainer
 
 
 class ValidationContainer(DataContainer):

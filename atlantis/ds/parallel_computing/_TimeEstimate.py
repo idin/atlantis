@@ -23,3 +23,11 @@ class TimeEstimate:
 		:rtype: TimeEstimate
 		"""
 		return TimeEstimate(count=self._count + other._count, total=self._total + other._total)
+
+
+class MissingTimeEstimate:
+	def __eq__(self, other):
+		return isinstance(other, MissingTimeEstimate)
+
+	def __ne__(self, other):
+		return not isinstance(other, MissingTimeEstimate)

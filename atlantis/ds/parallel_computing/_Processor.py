@@ -1,20 +1,22 @@
 import multiprocess
 from pandas import DataFrame
 from time import sleep
+import random
 from ...time import get_elapsed, get_now
 from ...time.progress import ProgressBar
 from ._worker import worker
 from ._Task import Task
-from ._TimeEstimate import TimeEstimate
+from ._TimeEstimate import MissingTimeEstimate
+from ._Project import Project
+from ..validation import Scoreboard
 
 
-class Manager:
-	def __init__(self, evaluation_function, time_unit='ms'):
+class Processor:
+	def __init__(self, time_unit='ms'):
 		self._processes = {}
 		self._manager = multiprocess.Manager()
-
 		self._data_namespace = self._manager.Namespace()
-		self._data_ids = set()
+		self._estimators = {}
 
 		self._to_do = self._manager.list()
 		self._doing = self._manager.dict()
@@ -23,41 +25,82 @@ class Manager:
 		self._errors = []
 		self._proceed_worker = self._manager.dict()
 		self._worker_status = self._manager.dict()
-		self._evaluation_function = evaluation_function
-		self._time_estimates = {}
+		self._projects = self._manager.dict()
+		self._scoreboards = {}
+
 		self._tasks_by_id = {}
 		self._time_unit = time_unit
 		self._worker_id_counter = 0
+
+	@property
+	def projects(self):
+		"""
+		:rtype: dict[str, Project]
+		"""
+		return self._projects
+
+	@property
+	def scoreboards(self):
+		"""
+		:rtype: dict[str, Scoreboard]
+		"""
+		return self._scoreboards
 
 	def generate_worker_id(self):
 		self._worker_id_counter += 1
 		return f'worker_{self._worker_id_counter}'
 
-	def add_data(self, data_id, training_data, test_data):
-		setattr(self._data_namespace, f'{data_id}_training', training_data)
-		setattr(self._data_namespace, f'{data_id}_test', test_data)
-		self._data_ids.add(data_id)
+	def add_project(self, project_name, problem_type, y_column, evaluation_function=None):
+		self._projects[project_name] = Project(
+			name=project_name, problem_type=problem_type,
+			n_function=evaluation_function,
+			y_column=y_column, time_unit=self._time_unit
+		)
 
-	def add_task(self, estimator_id, estimator_class, kwargs, data_id, y_column):
+	def add_data(self, project_name, data_id, training_data, test_data):
+		if project_name not in self._projects:
+			raise KeyError(f'project "{project_name}" is not defined yet!')
+		setattr(self._data_namespace, f'{project_name}_{data_id}_training', training_data)
+		setattr(self._data_namespace, f'{project_name}_{data_id}_test', test_data)
+		self.projects[project_name].add_data_id(data_id=data_id)
+		if project_name in self.scoreboards:
+			self.scoreboards[project_name].add_data_id(data_id=data_id)
+
+	def add_estimator(self, project_name, ):
+		if project_name not in self._estimators:
+			self._estimators[project_name] = {}
+
+		if project_name in self.scoreboards:
+			self.scoreboards[project_name].add_estimator(estimator_type=estimator_type, estimator_id=estimator_id)
+
+
+
+	def add_all_estimator_data_combination_tasks(self, project_name, num_tasks=None, shuffle=True):
+		combinations = self.projects[project_name].get_all_estimator_data_combinations()
+		if shuffle:
+			random.shuffle(combinations)
+
+		if num_tasks is None:
+			num_tasks = len(combinations)
+		else:
+			num_tasks = min(len(combinations), num_tasks)
+
+		for combination in combinations[:num_tasks]:
+			self.add_task(es)
+
+
+
+	def add_task(self, estimator_id, estimator_class, kwargs, project_name, data_id):
+		if data_id not in self.projects[project_name].data_ids:
+			raise KeyError(f'data {data_id} does not exist!')
 		task = Task(
 			estimator_id=estimator_id, estimator_class=estimator_class, kwargs=kwargs,
-			data_id=data_id, y_column=y_column
+			project_name=project_name, data_id=data_id, y_column=self.projects[project_name].y_column
 		)
 		if task.id in self._tasks_by_id:
 			raise ValueError(f'Task {task.id} already exists!')
 		self._tasks_by_id[task.id] = task
 		self._to_do.append(task)
-
-	def add_task_queue(self, queue):
-		"""
-		:type queue: list[(str, int, type, dict, DataFrame, DataFrame, str)]
-		"""
-		for item in queue:
-			estimator_id, data_id, estimator_class, kwargs, y_column = item
-			self.add_task(
-				estimator_id=estimator_id, data_id=data_id, estimator_class=estimator_class,
-				kwargs=kwargs, y_column=y_column
-			)
 
 	def add_worker(self):
 		"""
@@ -74,7 +117,7 @@ class Manager:
 				'done': self._done,
 				'proceed': self._proceed_worker,
 				'status': self._worker_status,
-				'evaluation_function': self._evaluation_function
+				'projects': self._projects
 			}
 		)
 		self._processes[worker_id] = process
@@ -95,38 +138,22 @@ class Manager:
 				task = self._done.pop(0)
 
 				if task.status == 'done':
-					estimator_type = task.estimator_type
-					if estimator_type not in self._time_estimates:
-						self._time_estimates[estimator_type] = TimeEstimate()
-					self._time_estimates[estimator_type].append(task.get_elapsed(unit=self._time_unit))
+					self.projects[task.project_name].add_time_estimate(task=task)
 
 				self._processed.append(task)
+				project_name = task.project_name
+				if project_name in self.scoreboards:
+					self.scoreboards[project_name].add_score(
+						estimator_type=task.estimator_type,
+						estimator_id=task.estimator_id,
+						data_id=task.data_id,
+						score_dictionary=task.evaluation
+					)
 			except IndexError:
 				break
 
-	@property
-	def time_estimates(self):
-		"""
-		:rtype: dict[str, TimeEstimate]
-		"""
-		return self._time_estimates
-
 	def get_time_estimate(self, task):
-		if task.is_done():
-			return task.get_elapsed(unit=self._time_unit)
-
-		if len(self.time_estimates) == 0:
-			return None
-
-		if task.estimator_type in self._time_estimates:
-			return self.time_estimates[task.estimator_type].get_mean()
-
-		mean_estimates = 0
-		count = 0
-		for estimate in self.time_estimates.values():
-			mean_estimates += estimate.get_mean()
-			count += 1
-		return mean_estimates / count
+		return self.projects[task.project_name].get_time_estimate(task=task)
 
 	def count_to_do(self):
 		return len(self._to_do) + len(self._doing)
@@ -138,26 +165,39 @@ class Manager:
 		if self.count_to_do() == 0:
 			return 0
 
-		if len(self.time_estimates) == 0:
-			return None
-
 		total = 0
 		for task in self._doing.values():
-			total += self.get_time_estimate(task=task)
+			estimate = self.get_time_estimate(task=task)
+			if estimate == MissingTimeEstimate():
+				return estimate
+			total += estimate
 
 		for task in self._to_do:
+			estimate = self.get_time_estimate(task=task)
+			if estimate == MissingTimeEstimate():
+				return estimate
 			total += self.get_time_estimate(task=task)
+
 		return total
 
 	def get_done_time(self):
 		total = 0
+
 		for task in self._processed:
-			total += self.get_time_estimate(task=task)
+			estimate = self.get_time_estimate(task=task)
+			if estimate == MissingTimeEstimate():
+				return estimate
+			total += estimate
+
 		for task in self._done:
-			total += self.get_time_estimate(task=task)
+			estimate = self.get_time_estimate(task=task)
+			if estimate == MissingTimeEstimate():
+				return estimate
+			total += estimate
+
 		return total
 
-	def get_num_workers(self):
+	def get_worker_count_string(self):
 		active = 0
 		idle = 0
 		terminated_or_ended = 0
@@ -178,27 +218,39 @@ class Manager:
 
 		return ' '.join(result)
 
-	def _update_progress_bar(self, progress_bar):
-		self.process_done_tasks()
+	def get_worker_count(self):
+		return len(self._processes)
+
+	def _update_progress_bay_by_count(self, progress_bar):
 		to_do_count = self.count_to_do()
 		done_count = self.count_done()
-		# if there is any time estimate use time to show progress
-		if len(self._time_estimates) > 0:
-			to_do_time = self.get_to_do_time()
-			done_time = self.get_done_time()
-			progress_bar.set_total(to_do_time + done_time)
-			progress_bar.show(
-				amount=done_time,
-				text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_num_workers()}'
-			)
-		else:
-			progress_bar.set_total(to_do_count + done_count)
-			progress_bar.show(
-				amount=done_count,
-				text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_num_workers()}'
-			)
+		progress_bar.set_total(to_do_count + done_count)
+		progress_bar.show(
+			amount=done_count,
+			text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_worker_count_string()}'
+		)
+		return progress_bar
 
-		return to_do_count
+	def _update_progress_bar(self, progress_bar):
+		self.process_done_tasks()
+
+		# if there is any time estimate use time to show progress
+
+		# try with time:
+		to_do_time = self.get_to_do_time()
+		if to_do_time == MissingTimeEstimate():
+			return self._update_progress_bay_by_count(progress_bar=progress_bar)
+
+		done_time = self.get_done_time()
+		if done_time == MissingTimeEstimate():
+			return self._update_progress_bay_by_count(progress_bar=progress_bar)
+
+		progress_bar.set_total(to_do_time + done_time)
+		progress_bar.show(
+			amount=done_time,
+			text=f'tasks: {done_time} / {to_do_time + done_time} | workers: {self.get_worker_count_string()}'
+		)
+		return progress_bar
 
 	def show_progress(self, time_limit=None, time_unit='s'):
 		if len(self._processes) == 0:
@@ -234,13 +286,13 @@ class Manager:
 		"""
 		d = {}
 		for task in self._processed:
-			d[task.id] = task
+			d[task.name] = task
 		for task in self._done:
-			d[task.id] = task
+			d[task.name] = task
 		for task in self._doing.values():
-			d[task.id] = task
+			d[task.name] = task
 		for task in self._to_do:
-			d[task.id] = task
+			d[task.name] = task
 		return list(d.values())
 
 	@property
