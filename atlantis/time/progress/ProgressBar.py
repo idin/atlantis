@@ -304,7 +304,7 @@ class ProgressBar:
 		else:
 			return self
 
-	def show(self, amount, total=None, extra_amount=0, percent=True, bar=True, time=True, text=''):
+	def show(self, amount, total=None, extra_amount=0, percent=True, bar=True, time=True, text='', next_line=None):
 		"""
 		:type amount: int or float or NoneType
 		:type total: NoneType or float
@@ -370,7 +370,10 @@ class ProgressBar:
 					else:
 						self.write(string=string)
 
-					if self._next_line:
+					if next_line is None:
+						next_line = self._next_line
+
+					if next_line:
 						print('')
 				else:
 					self.write(string=string, flush=True)

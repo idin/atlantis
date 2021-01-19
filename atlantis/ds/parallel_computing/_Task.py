@@ -3,9 +3,30 @@ from datetime import datetime
 
 
 class Task:
-	def __init__(self, project_name):
+	def __init__(self, project_name, task_id):
 		self._project_name = project_name
+		self._status = 'new'
 		self._worker_id = None
+		self._error = None
+		self._starting_time = None
+		self._ending_time = None
+		self._id = task_id
+
+	def __str__(self):
+		return f'{self.id} ({self._status})'
+
+	def __repr__(self):
+		return f'{self.__class__.__name__}: {self})'
+
+	@property
+	def id(self):
+		if self._id is None:
+			raise ValueError(f'task id is None!')
+		return self._id
+
+	@property
+	def project_name(self):
+		return self._project_name
 
 	@property
 	def starting_time(self):
@@ -18,6 +39,17 @@ class Task:
 	def start(self):
 		self._status = 'started'
 		self._starting_time = datetime.now()
+
+	def do(self, data_namespace, worker_id):
+		try:
+			self.start()
+
+			# placeholder for whatever needs to be done
+			raise NotImplementedError(f'do() is not implemented for this task: {self.id}')
+
+			self.end(worker_id=worker_id)
+		except Exception as error:
+			self.set_error(error=error)
 
 	def end(self, worker_id):
 		self._ending_time = datetime.now()
@@ -38,112 +70,4 @@ class Task:
 		return self._status == 'done'
 
 
-class TrainingTestTask(Task):
-	def __init__(
-			self, estimator_id, project_name, data_id, estimator_class, kwargs, y_column
-	):
-		super().__init__(project_name=project_name)
-		if not isinstance(estimator_id, (str, int)):
-			raise TypeError('estimator_id should be an int or str')
 
-		if not isinstance(project_name, (str, int)):
-			raise TypeError('project_name should be either an int or a str')
-
-		if not isinstance(data_id, (int, str)):
-			raise TypeError('data_id should be an int or str')
-
-		if not isinstance(estimator_class, type):
-			raise TypeError('estimator_class should be a type')
-
-		if not isinstance(kwargs, dict):
-			raise TypeError('kwargs should be an int')
-
-		if not isinstance(y_column, str):
-			raise TypeError('y_column should be a str')
-
-		self._estimator_id = estimator_id
-
-		self._data_id = data_id
-		self._estimator_class = estimator_class
-		self._kwargs = kwargs
-
-		self._y_column = y_column
-		self._status = 'new'
-		self._evaluation = None
-		self._starting_time = None
-		self._ending_time = None
-		self._error = None
-
-
-	def __repr__(self):
-		return f'Task: {self.id} ({self._status})'
-
-	def __str__(self):
-		return repr(self)
-
-	@property
-	def id(self):
-		return self.estimator_type, self.estimator_id, self.project_name, self.data_id, self.y_column
-
-	@property
-	def status(self):
-		return self._status
-
-	def __hash__(self):
-		return hash(self.id)
-
-	@property
-	def estimator_id(self):
-		return self._estimator_id
-
-	@property
-	def project_name(self):
-		return self._project_name
-
-	@property
-	def estimator_class(self):
-		return self._estimator_class
-
-	@property
-	def estimator_type(self):
-		return self.estimator_class.__name__
-
-	@property
-	def data_id(self):
-		return self._data_id
-
-	@property
-	def kwargs(self):
-		return self._kwargs
-
-	@property
-	def y_column(self):
-		return self._y_column
-
-	@property
-	def evaluation(self):
-		return self._evaluation
-
-	@evaluation.setter
-	def evaluation(self, evaluation):
-		self._evaluation = evaluation
-
-	@property
-	def record(self):
-		"""
-		:rtype: dict
-		"""
-		evaluation = self.evaluation or {}
-
-		return {
-			'project_name': self.project_name,
-			'estimator_type': self.estimator_type,
-			'estimator_id': self.estimator_id,
-			'data_id': self.data_id,
-			'worker_id': self._worker_id,
-			'status': self._status,
-			'starting_time': self.starting_time,
-			'ending_time': self.ending_time,
-			'elapsed_ms': self.get_elapsed(unit='ms'),
-			**evaluation
-		}

@@ -1,4 +1,3 @@
 from ._Processor import Processor
-from ._Task import TrainingTestTask
-from ._Project import Project
-from ._ValidationProject import ValidationProject
+from ._LearningTask import LearningTask
+from ._LearningProject import LearningProject

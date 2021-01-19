@@ -4,30 +4,30 @@ from ...hash import hash_object
 
 
 class EstimatorGrid:
-	def __init__(self, estimator, parameters=None):
+	def __init__(self, estimator, estimator_arguments=None):
 		"""
 		:type estimator: LogisticRegression or LinearRegression
-		:type parameters: dict
+		:type estimator_arguments: dict
 		"""
 		self._estimator = estimator
 		self._hash_to_id = {}
-		self._id_to_parameters = {}
+		self._id_to_arguments = {}
 
-		if parameters is not None:
-			self.append(parameters=parameters)
+		if estimator_arguments is not None:
+			self.append(estimator_arguments=estimator_arguments)
 
 	def get_available_id(self):
-		if len(self._id_to_parameters) == 0:
+		if len(self._id_to_arguments) == 0:
 			return 1
 		else:
-			max_id = max([i for i in self._id_to_parameters.keys()])
+			max_id = max([i for i in self._id_to_arguments.keys()])
 
-			if len(self._id_to_parameters) == max_id:
+			if len(self._id_to_arguments) == max_id:
 				return max_id + 1
 
 			else:
 				for i in range(1, max_id + 2):
-					if i not in self._id_to_parameters:
+					if i not in self._id_to_arguments:
 						return i
 
 	@property
@@ -35,13 +35,13 @@ class EstimatorGrid:
 		"""
 		:rtype: list[int]
 		"""
-		return list(self._id_to_parameters.keys())
+		return list(self._id_to_arguments.keys())
 
 	def __contains__(self, item):
-		return item in self._id_to_parameters
+		return item in self._id_to_arguments
 
 	@property
-	def Estimator(self):
+	def estimator(self):
 		"""
 		:rtype: type
 		"""
@@ -49,14 +49,14 @@ class EstimatorGrid:
 
 	@property
 	def name(self):
-		return self.Estimator.__name__
+		return self.estimator.__name__
 
-	def append(self, parameters):
+	def append(self, estimator_arguments):
 		"""
-		adds a dictionary of parameters if they don't exist
-		:type parameters: dict
+		adds a dictionary of arguments if they don't exist
+		:type estimator_arguments: dict
 		"""
-		grid = create_grid(dictionary=parameters)
+		grid = create_grid(dictionary=estimator_arguments)
 
 		for dictionary in grid:
 			hash_key = hash_object(dictionary)
@@ -64,7 +64,7 @@ class EstimatorGrid:
 			if hash_key not in self._hash_to_id:
 				new_id = self.get_available_id()
 				self._hash_to_id[hash_key] = new_id
-				self._id_to_parameters[new_id] = dictionary
+				self._id_to_arguments[new_id] = dictionary
 
 	@property
 	def estimator_dictionaries(self):
@@ -72,8 +72,8 @@ class EstimatorGrid:
 		:rtype: list[dict]
 		"""
 		return [
-			{'estimator': self.Estimator, 'parameters': parameters, 'id': f'{self.name}_{key}'}
-			for key, parameters in self._id_to_parameters.items()
+			{'estimator': self.estimator, 'estimator_arguments': estimator_arguments, 'id': f'{self.name}_{key}'}
+			for key, estimator_arguments in self._id_to_arguments.items()
 		]
 
 	def __add__(self, other):
@@ -81,22 +81,22 @@ class EstimatorGrid:
 		:type other: EstimatorGrid
 		:rtype: EstimatorGrid
 		"""
-		result = EstimatorGrid(estimator=self.Estimator)
+		result = EstimatorGrid(estimator=self.estimator)
 
-		for parameters in self._id_to_parameters.values():
-			result.append(parameters=parameters)
+		for estimator_arguments in self._id_to_arguments.values():
+			result.append(estimator_arguments=estimator_arguments)
 
-		for parameters in other._id_to_parameters.values():
-			result.append(parameters=parameters)
+		for estimator_arguments in other._id_to_arguments.values():
+			result.append(estimator_arguments=estimator_arguments)
 
 		return result
 
 
 class EstimatorRepository:
-	def __init__(self, estimator=None, parameters=None):
+	def __init__(self, estimator=None, estimator_arguments=None):
 		self._estimator_grids_dictionary = {}
-		if estimator is not None and parameters is not None:
-			self.append(estimator=estimator, kwargs=parameters)
+		if estimator is not None and estimator_arguments is not None:
+			self.append(estimator=estimator, estimator_arguments=estimator_arguments)
 
 	def __contains__(self, item):
 		"""
@@ -111,17 +111,18 @@ class EstimatorRepository:
 			else:
 				return estimator_id in self.estimator_grids[estimator_name]
 
-	def append(self, estimator, kwargs):
+	def append(self, estimator, estimator_arguments=None):
 		"""
 		:type estimator: type
-		:type kwargs: dict
+		:type estimator_arguments: dict
 		"""
+		estimator_arguments = estimator_arguments or {}
 		class_name = estimator.__name__
 
 		if class_name not in self._estimator_grids_dictionary:
 			self._estimator_grids_dictionary[class_name] = EstimatorGrid(estimator=estimator)
 
-		self._estimator_grids_dictionary[class_name].append(kwargs=kwargs)
+		self._estimator_grids_dictionary[class_name].append(estimator_arguments=estimator_arguments)
 
 	@property
 	def estimator_grids(self):

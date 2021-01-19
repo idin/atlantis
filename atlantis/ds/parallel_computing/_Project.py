@@ -1,80 +1,47 @@
-from ._Task import TrainingTestTask
 from ._TimeEstimate import TimeEstimate, MissingTimeEstimate
-from ..evaluation import evaluate_regression, evaluate_classification
-from ..validation import Scoreboard
+from ._Task import Task
+from collections import OrderedDict
 
 
 class Project:
-	def __init__(self, name, y_column, problem_type, time_unit='ms', evaluation_function=None):
+	def __init__(self, name, time_unit='ms', processor=None):
+		"""
+		:type name: str
+		:type time_unit: str
+		"""
 		self._name = name
-
-		if problem_type.lower().startswith('reg'):
-			problem_type = 'regression'
-		elif problem_type.lower().startswith('class'):
-			problem_type = 'classification'
-		else:
-			raise ValueError(f'problem_type: {problem_type} is not defined!')
-
-		self._problem_type = problem_type
-
-		if evaluation_function is None:
-			if problem_type == 'regression':
-				evaluation_function = evaluate_regression
-			elif problem_type == 'classification':
-				evaluation_function = evaluate_classification
-
-		self._evaluation_function = evaluation_function
-		self._time_estimates = {}
-		self._y_column = y_column
-		self._data_ids = set()
 		self._time_unit = time_unit
+		self._time_estimates = {}
+		self._data_ids = set()
 		self._estimators = {}
-		self._scoreboard = None
 
-	def add_scoreboard(self, main_metric=None, lowest_is_best=None, best_score=None):
-		if self.problem_type == 'regression':
-			main_metric = 'rmse' if main_metric is None else main_metric
-			lowest_is_best = True if lowest_is_best is None else lowest_is_best
-			best_score = 0 if best_score is None else best_score
-		elif self.problem_type == 'classification':
-			main_metric = 'f1_score' if main_metric is None else main_metric
-			lowest_is_best = False if lowest_is_best is None else lowest_is_best
-			best_score = 1 if best_score is None else best_score
-		else:
-			raise ValueError(f'problem type {self.problem_type} does not work with validation!')
-		self._scoreboard = Scoreboard(main_metric=main_metric, lowest_is_best=lowest_is_best, best_score=best_score)
-		for data_id in self.data_ids:
-			self._scoreboard.add_data_id(data_id=data_id)
-		for estimator_type, estimator_id in self._estimators.keys():
-			self._scoreboard.add_estimator(estimator_type=estimator_type, estimator_id=estimator_id)
+		self._pre_to_do = OrderedDict()
+		self._to_do = OrderedDict()
 
-	@property
-	def problem_type(self):
-		return self._problem_type
+		self._being_done_ids = set()
+
+		self._done = OrderedDict()
+		self._processor = None
+		if processor is not None:
+			processor.add_project(project=self)
+
+	def __repr__(self):
+		lines = [
+			f'Name: {self.name}',
+			'',
+			f'estimators: {len(self.estimators)}',
+			f'data sets: {len(self._data_ids)}',
+			f'tasks: {self.total_num_tasks} (to-do: {self.num_to_do_tasks}, being done: {self.num_tasks_being_done}, done: {self.num_tasks_done})'
+		]
+
+		return '\n'.join(lines)
+
+	def __str__(self):
+		return str(self.name)
 
 	@property
 	def name(self):
 		return self._name
-
-	def __repr__(self):
-		return f'Problem {self.name}'
-
-	def __str__(self):
-		return repr(self)
-
-	@property
-	def evaluation_function(self):
-		"""
-		:rtype: callable
-		"""
-		return self._evaluation_function
-
-	@property
-	def y_column(self):
-		"""
-		:rtype: str
-		"""
-		return self._y_column
 
 	@property
 	def time_estimates(self):
@@ -87,9 +54,9 @@ class Project:
 		"""
 		:type task: TrainingTestTask
 		"""
-		if task.estimator_type not in self.time_estimates:
-			self.time_estimates[task.estimator_type] = TimeEstimate()
-		self.time_estimates[task.estimator_type].append(task.get_elapsed(unit=self._time_unit))
+		if task.estimator_name not in self.time_estimates:
+			self.time_estimates[task.estimator_name] = TimeEstimate()
+		self.time_estimates[task.estimator_name].append(task.get_elapsed(unit=self._time_unit))
 
 	def get_time_estimate(self, task):
 		if task.project_name != self.name:
@@ -98,8 +65,8 @@ class Project:
 		if task.is_done():
 			return task.get_elapsed(unit=self._time_unit)
 
-		if task.estimator_type in self.time_estimates:
-			return self.time_estimates[task.estimator_type].get_mean()
+		if task.estimator_name in self.time_estimates:
+			return self.time_estimates[task.estimator_name].get_mean()
 
 		elif len(self.time_estimates) > 0:
 			total = 0
@@ -113,47 +80,140 @@ class Project:
 			return MissingTimeEstimate()
 
 	@property
-	def scoreboard(self):
-		"""
-		:rtype: Scoreboard
-		"""
-		return self._scoreboard
-
-	def add_data_id(self, data_id):
-		if data_id in self._data_ids:
-			raise ValueError(f'data {data_id} already exists for {self}!')
-		self._data_ids.add(data_id)
-		if self._scoreboard is not None:
-			self.scoreboard.add_data_id(data_id=data_id)
-
-	@property
 	def data_ids(self):
 		"""
 		:rtype: set
 		"""
 		return self._data_ids
 
-	def add_estimator(self, estimator_class, estimator_id, kwargs):
+	def add_data(self, data_id, processor=None, data=None, overwrite=False):
+		"""
+
+		:type 	processor: atlantis.ds.parallel_computing.Processor
+		:param 	data_id:
+		:param 	data:
+		:param 	overwrite:
+		:return:
+		"""
+		if processor is not None:
+			processor.add_project(project=self)
+		else:
+			processor = self._processor
+
+		if data_id in self.data_ids and data is not None:
+			if not overwrite:
+				raise ValueError(f'data {data_id} already exists in project {self}')
+
+		if data is None:
+			if data_id not in processor.data_ids:
+				raise KeyError(f'data {data_id} does not exist in the processor')
+		else:
+			processor.add_data(data_id=data_id, data=data, overwrite=overwrite)
+
+		self._data_ids.add(data_id)
+
+	@staticmethod
+	def _get_estimator_name(estimator_class):
+		return estimator_class.__name__
+
+	def add_estimator(self, estimator_class, estimator_id, estimator_arguments):
 		if not isinstance(estimator_class, type):
 			raise TypeError(f'estimator_class is of type {type(estimator_class)}')
-		estimator_type = estimator_class.__name__  # string
-		key = estimator_type, estimator_id
-		self._estimators[key] = {'class': estimator_class, 'kwargs': kwargs}
-		if self._scoreboard is not None:
-			self.scoreboard.add_estimator(estimator_type=estimator_type, estimator_id=estimator_id)
 
-	def get_all_estimator_data_combinations(self):
+		estimator_name = self._get_estimator_name(estimator_class)
+		key = estimator_name, estimator_id
+		self._estimators[key] = {'class': estimator_class, 'arguments': estimator_arguments}
+		return estimator_name, estimator_id
+
+	@property
+	def estimators(self):
 		"""
-		:rtype: list[dict]
+		:rtype: dict[(str, int), dict]
 		"""
-		return [
-			{
-				'estimator_type': estimator_type_and_id[0],
-				'estimator_id': estimator_type_and_id[1],
-				'estimator_class': estimator_class_and_kwargs[0],
-				'estimator_kwargs': estimator_class_and_kwargs[1],
-				'data_id': data_id
-			}
-			for data_id in self.data_ids
-			for estimator_type_and_id, estimator_class_and_kwargs in self._estimators.items()
-		]
+		return self._estimators
+
+	@property
+	def num_new_tasks(self):
+		return len(self._pre_to_do)
+
+	@property
+	def num_to_do_tasks(self):
+		return len(self._to_do)
+
+	@property
+	def num_tasks_being_done(self):
+		return len(self._being_done_ids)
+
+	@property
+	def num_tasks_done(self):
+		return len(self._done)
+
+	@property
+	def total_num_tasks(self):
+		return self.num_new_tasks + self.num_to_do_tasks + self.num_tasks_being_done + self.num_tasks_done
+
+	def contains_task(self, task_id):
+		if isinstance(task_id, Task):
+			raise TypeError('task_id cannot be of type Task!')
+		return task_id in self._to_do or task_id in self._being_done_ids or task_id in self._done
+
+	def _take_from_pre_and_add_to_to_do(self, task_id):
+		if task_id in self._pre_to_do:
+			task = self._pre_to_do.pop(key=task_id)
+			self._to_do[task_id] = task
+		else:
+			raise KeyError(f'task_id {task_id} does not exist in pre-to-do')
+
+	def pop_to_do_task(self):
+		"""
+		:rtype: Task
+		"""
+		task_id, task = self._to_do.popitem(0)
+		if task.id in self._being_done_ids:
+			self._to_do[task_id] = task
+			raise RuntimeError(f'task {task} already exists in being_done')
+		self._being_done_ids.add(task_id)
+		return task
+
+	def add_done_task(self, task):
+		"""
+		:type task: Task
+		"""
+		if not isinstance(task, Task):
+			raise TypeError(f'task should be of type Task but it is of type {type(task)}')
+		if task.id not in self._being_done_ids:
+			raise KeyError(f'task_id {task.id} does not exist in being_done_ids')
+		if task.id in self._done:
+			raise KeyError(f'task {task} already exists in done!')
+
+		self.process(task=task)
+		self._being_done_ids.remove(task.id)
+		self._done[task.id] = task
+
+	def process(self, task):
+		raise NotImplementedError(f'this method should be implemented for class {self.__class__}')
+
+	def fill_to_do_list(self, num_tasks, **kwargs):
+		raise NotImplementedError(f'this method should be implemented for class {self.__class__}')
+
+	def task_is_done(self, task):
+		"""
+		:type task: Task
+		"""
+		if not isinstance(task, Task):
+			raise TypeError(f'task should be a Task but it is of type {type(Task)}')
+
+		if task.id not in self.task_ids_of_being_done:
+			raise KeyError(f'task_id {task.id} does not exist in being_done')
+
+		if task.id in self.done_tasks:
+			raise RuntimeError(f'task {task} is already done!')
+
+		try:
+			self.process(task=task)
+		except Exception as e:
+			self._task_errors[task.id] = task
+			raise e
+
+		self.done_tasks[task.id] = task
+		self.task_ids_of_being_done.remove(task.id)

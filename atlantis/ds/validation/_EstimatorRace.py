@@ -42,8 +42,8 @@ class EstimatorRace:
 		:type parameters: dict
 		"""
 		if self._estimator_repository is None:
-			self._estimator_repository = EstimatorRepository(estimator=model, parameters=parameters)
+			self._estimator_repository = EstimatorRepository(estimator=model, estimator_arguments=parameters)
 
 		else:
-			self.estimator_repository.append(estimator=model, kwargs=parameters)
+			self.estimator_repository.append(estimator=model, estimator_arguments=parameters)
 

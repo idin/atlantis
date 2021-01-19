@@ -1,5 +1,5 @@
 from ..parallel_computing import Processor
-from ..parallel_computing import Project
+from ..parallel_computing import LearningProject
 from ..validation import CrossValidation, TimeSeriesValidation, Scoreboard
 from ..validation import EstimatorRepository
 import multiprocess
@@ -17,7 +17,7 @@ class AutoML:
 	@property
 	def projects(self):
 		"""
-		:rtype: dict[str, Project]
+		:rtype: dict[str, LearningProject]
 		"""
 		return self.processor.projects
 
@@ -69,7 +69,7 @@ class AutoML:
 		:type 	random_state: int or NoneType
 		"""
 
-		self._projects[project_name] = ValidationProject(
+		self._projects[project_name] = LearningProject(
 			name=project_name, y_column=y_column, problem_type=problem_type, time_unit='ms', evaluation_function=None,
 			main_metric=main_metric
 		)
@@ -115,7 +115,7 @@ class AutoML:
 		)
 
 	def add_models(self, problem_id, estimator, kwargs):
-		self.estimator_repositories[problem_id].append(estimator=estimator, kwargs=kwargs)
+		self.estimator_repositories[problem_id].append(estimator=estimator, estimator_arguments=kwargs)
 
 	def add_workers(self, num_workers=1):
 		self.processor.add_workers(num_workers=num_workers)

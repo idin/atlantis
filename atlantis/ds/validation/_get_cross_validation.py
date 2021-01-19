@@ -12,17 +12,17 @@ def get_cross_validation(
 		min_training_ratio=None, min_training_count=None
 ):
 	"""
-	:type data: DataFrame
-	:type num_splits: int
-	:type holdout_ratio: float
-	:type holdout_count: int
-	:type sort_columns: list[str]
-	:type id_columns: list[str]
-	:type test_ratio: float
-	:type test_count: int
-	:type random_state: int
-	:type min_training_ratio: float
-	:type min_training_count: int
+	:type 	data: DataFrame
+	:type 	num_splits: int
+	:type 	holdout_ratio: float
+	:type 	holdout_count: int
+	:type 	sort_columns: list[str]
+	:type 	id_columns: list[str]
+	:type 	test_ratio: float
+	:type 	test_count: int
+	:type 	random_state: int
+	:type 	min_training_ratio: float
+	:type 	min_training_count: int
 	:rtype: ValidationContainer
 	"""
 	if id_columns is None and sort_columns is not None:

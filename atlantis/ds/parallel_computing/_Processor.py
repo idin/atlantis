@@ -1,14 +1,17 @@
 import multiprocess
 from pandas import DataFrame
 from time import sleep
-import random
+
 from ...time import get_elapsed, get_now
 from ...time.progress import ProgressBar
+
+from ..validation import Validation
+from ..validation import EstimatorRepository
+
 from ._worker import worker
-from ._Task import TrainingTestTask
 from ._TimeEstimate import MissingTimeEstimate
 from ._Project import Project
-from ..validation import Scoreboard
+from ._LearningProject import LearningProject
 
 
 class Processor:
@@ -16,6 +19,8 @@ class Processor:
 		self._processes = {}
 		self._manager = multiprocess.Manager()
 		self._data_namespace = self._manager.Namespace()
+		self._data_columns = self._manager.Namespace()
+		self._data_shapes = self._manager.Namespace()
 		self._estimators = {}
 
 		self._to_do = self._manager.list()
@@ -25,82 +30,72 @@ class Processor:
 		self._errors = []
 		self._proceed_worker = self._manager.dict()
 		self._worker_status = self._manager.dict()
-		self._projects = self._manager.dict()
-		self._scoreboards = {}
+		self._projects = {}
 
 		self._tasks_by_id = {}
 		self._time_unit = time_unit
 		self._worker_id_counter = 0
 
 	@property
-	def projects(self):
+	def data_ids(self):
 		"""
-		:rtype: dict[str, Project]
+		:rtype list[str]
 		"""
-		return self._projects
+		return list(self._data_namespace.keys())
 
-	@property
-	def scoreboards(self):
+	def get_data(self, data_id):
 		"""
-		:rtype: dict[str, Scoreboard]
+		:type data_id: int or str
+		:rtype: DataFrame
 		"""
-		return self._scoreboards
+		return getattr(self._data_namespace, data_id)
+
+	def get_data_columns(self, data_id):
+		"""
+		:type data_id: int or str
+		:rtype: list
+		"""
+		return getattr(self._data_columns, data_id)
+
+	def get_data_shape(self, data_id):
+		"""
+		:type data_id: int or str
+		:rtype: tuple
+		"""
+		return getattr(self._data_shapes, data_id)
 
 	def generate_worker_id(self):
 		self._worker_id_counter += 1
 		return f'worker_{self._worker_id_counter}'
 
-	def add_project(self, project_name, problem_type, y_column, evaluation_function=None):
-		self._projects[project_name] = Project(
-			name=project_name, problem_type=problem_type,
-			n_function=evaluation_function,
-			y_column=y_column, time_unit=self._time_unit
-		)
+	@property
+	def projects(self):
+		"""
+		:rtype: dict[str, Project or LearningProject]
+		"""
+		return self._projects
 
-	def add_data(self, project_name, data_id, training_data, test_data):
-		if project_name not in self._projects:
-			raise KeyError(f'project "{project_name}" is not defined yet!')
-		setattr(self._data_namespace, f'{project_name}_{data_id}_training', training_data)
-		setattr(self._data_namespace, f'{project_name}_{data_id}_test', test_data)
-		self.projects[project_name].add_data_id(data_id=data_id)
-		if project_name in self.scoreboards:
-			self.scoreboards[project_name].add_data_id(data_id=data_id)
+	def add_project(self, project):
+		"""
+		:type project: Project
+		"""
+		if project.name in self._projects:
+			raise RuntimeError(f'project {project.name} already exists.')
+		self._projects[project.name] = project
+		project._processor = self
 
-	def add_estimator(self, project_name, ):
-		if project_name not in self._estimators:
-			self._estimators[project_name] = {}
-
-		if project_name in self.scoreboards:
-			self.scoreboards[project_name].add_estimator(estimator_type=estimator_type, estimator_id=estimator_id)
-
-
-
-	def add_all_estimator_data_combination_tasks(self, project_name, num_tasks=None, shuffle=True):
-		combinations = self.projects[project_name].get_all_estimator_data_combinations()
-		if shuffle:
-			random.shuffle(combinations)
-
-		if num_tasks is None:
-			num_tasks = len(combinations)
-		else:
-			num_tasks = min(len(combinations), num_tasks)
-
-		for combination in combinations[:num_tasks]:
-			self.add_task(es)
-
-
-
-	def add_task(self, estimator_id, estimator_class, kwargs, project_name, data_id):
-		if data_id not in self.projects[project_name].data_ids:
-			raise KeyError(f'data {data_id} does not exist!')
-		task = TrainingTestTask(
-			estimator_id=estimator_id, estimator_class=estimator_class, kwargs=kwargs,
-			project_name=project_name, data_id=data_id, y_column=self.projects[project_name].y_column
-		)
-		if task.id in self._tasks_by_id:
-			raise ValueError(f'Task {task.id} already exists!')
-		self._tasks_by_id[task.id] = task
-		self._to_do.append(task)
+	def add_data(self, data_id, data, overwrite=False):
+		"""
+		:type data_id: int or str
+		:type data: DataFrame
+		:type overwrite: bool
+		"""
+		if hasattr(self._data_namespace, data_id):
+			if not overwrite:
+				raise ValueError(f'data {data_id} already exists in the processor')
+		setattr(self._data_namespace, data_id, data)
+		setattr(self._data_columns, data_id, list(data.columns))
+		setattr(self._data_shapes, data_id, data.shape)
 
 	def add_worker(self):
 		"""
@@ -116,8 +111,7 @@ class Processor:
 				'doing': self._doing,
 				'done': self._done,
 				'proceed': self._proceed_worker,
-				'status': self._worker_status,
-				'projects': self._projects
+				'status': self._worker_status
 			}
 		)
 		self._processes[worker_id] = process
@@ -132,25 +126,116 @@ class Processor:
 		for i in range(num_workers):
 			self.add_worker()
 
-	def process_done_tasks(self):
+	def create_learning_project(
+			self, name, y_column, problem_type, x_columns=None, time_unit='ms',
+			evaluation_function=None, main_metric=None, lowest_is_best=None, best_score=None,
+			scoreboard=None
+	):
+		"""
+
+		:type 	name: str
+		:type 	y_column: strx
+
+		:type 	problem_type: str
+		:param 	problem_type: either regression or classification
+
+		:type 	x_columns: str
+
+		:type 	time_unit: str
+		:param 	time_unit: s, ms, etc.
+
+
+		:type 	evaluation_function: callable
+		:param 	evaluation_function: 	a function that gets predicted and actual and
+										produces a dictionary of values such as {'rmse': ...} for regression
+										or {'f1_score': ...} for classification
+
+		:param 	main_metric: 	the main metric used for comparison, it should exist as one of the keys
+								in the result produced by evaluation_function
+
+		:param 	lowest_is_best: usually True for regression (unless a weird metric is used) and False for classification
+		:param 	best_score: usually 0 for regression and 1 for classification
+
+		:type 	scoreboard: Scoreboard
+		:param 	scoreboard: a Scoreboard object that keeps score of all estimators, can be added later too
+
+		:rtype: LearningProject
+		"""
+		project = LearningProject(
+			processor=self,
+			name=name, y_column=y_column, problem_type=problem_type, x_columns=x_columns, time_unit=time_unit,
+			evaluation_function=evaluation_function, main_metric=main_metric, lowest_is_best=lowest_is_best,
+			best_score=best_score, scoreboard=scoreboard
+		)
+		return project
+
+	def load_to_do_tasks(self, project_name=None, num_tasks=None, echo=True, **kwargs):
+		"""
+
+		:param project_name: name of the project
+		:type  project_name: str
+
+		:param num_tasks: number of tasks to load from the project
+		:type  num_tasks: int
+
+		:param echo:
+		:type  echo: bool
+
+		:return:
+		"""
+		if project_name is None:
+			for project_name in self.projects.keys():
+				self.load_to_do_tasks(project_name=project_name, num_tasks=num_tasks, echo=echo, **kwargs)
+
+		self.process_done_tasks()
+		project = self.projects[project_name]
+		project.produce_tasks(ignore_error=True, echo=echo)
+		if num_tasks is not None:
+			if num_tasks > project.num_to_do_tasks:
+				# fill to do list in project
+				num_of_new_tasks = num_tasks - project.num_to_do_tasks
+
+				# but cannot get more than what is available
+				num_of_new_tasks = min(num_of_new_tasks, project.num_new_tasks)
+
+				project.fill_to_do_list(num_tasks=num_of_new_tasks, **kwargs)
+
+		loaded_count = 0
+		while project.num_to_do_tasks > 0:
+			task = project.pop_to_do_task()
+			self._to_do.append(task)
+			loaded_count += 1
+
+		if echo:
+			print(f'{loaded_count} loaded from project {project_name}')
+
+	def process_done_tasks(self, ignore_errors=False, echo=True):
+		processed_count = {}
 		while True:
 			try:
 				task = self._done.pop(0)
 
 				if task.status == 'done':
 					self.projects[task.project_name].add_time_estimate(task=task)
+					project = self.projects[task.project_name]
+					project.add_done_task(task=task)
+					if task.project_name not in processed_count:
+						processed_count[task.project_name] = 1
+					else:
+						processed_count[task.project_name] += 1
+				elif task.status == 'error':
+					if not ignore_errors:
+						raise task._error
+				else:
+					raise RuntimeError(f'do not know what to do with status: {task.status}')
 
 				self._processed.append(task)
-				project_name = task.project_name
-				if project_name in self.scoreboards:
-					self.scoreboards[project_name].add_score(
-						estimator_type=task.estimator_type,
-						estimator_id=task.estimator_id,
-						data_id=task.data_id,
-						score_dictionary=task.evaluation
-					)
+
 			except IndexError:
 				break
+		if echo:
+			for project_name, number in processed_count.items():
+				print(f'{processed_count} tasks from project {project_name} processed.')
 
 	def get_time_estimate(self, task):
 		return self.projects[task.project_name].get_time_estimate(task=task)
@@ -221,36 +306,41 @@ class Processor:
 	def get_worker_count(self):
 		return len(self._processes)
 
-	def _update_progress_bay_by_count(self, progress_bar):
+	def _update_progress_bay_by_count(self, progress_bar, next_line):
 		to_do_count = self.count_to_do()
 		done_count = self.count_done()
 		progress_bar.set_total(to_do_count + done_count)
 		progress_bar.show(
 			amount=done_count,
-			text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_worker_count_string()}'
+			text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_worker_count_string()}',
+			next_line=next_line
 		)
-		return progress_bar
+		return to_do_count
 
-	def _update_progress_bar(self, progress_bar):
-		self.process_done_tasks()
+	def _update_progress_bar(self, progress_bar, next_line):
+		self.process_done_tasks(echo=False)
 
 		# if there is any time estimate use time to show progress
 
 		# try with time:
 		to_do_time = self.get_to_do_time()
 		if to_do_time == MissingTimeEstimate():
-			return self._update_progress_bay_by_count(progress_bar=progress_bar)
+			return self._update_progress_bay_by_count(progress_bar=progress_bar, next_line=next_line)
 
 		done_time = self.get_done_time()
 		if done_time == MissingTimeEstimate():
 			return self._update_progress_bay_by_count(progress_bar=progress_bar)
 
 		progress_bar.set_total(to_do_time + done_time)
+		to_do_count = self.count_to_do()
+		done_count = self.count_done()
 		progress_bar.show(
 			amount=done_time,
-			text=f'tasks: {done_time} / {to_do_time + done_time} | workers: {self.get_worker_count_string()}'
+			text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_worker_count_string()}',
+			next_line=next_line
+
 		)
-		return progress_bar
+		return to_do_count
 
 	def show_progress(self, time_limit=None, time_unit='s'):
 		if len(self._processes) == 0:
@@ -260,17 +350,18 @@ class Processor:
 		progress_bar.show(amount=0)
 		try:
 			while True:
-				to_do_count = self._update_progress_bar(progress_bar=progress_bar)
+				to_do_count = self._update_progress_bar(progress_bar=progress_bar, next_line=False)
 				if to_do_count == 0:
 					progress_bar.set_total(total=100)
-					progress_bar.show(amount=100)
+					progress_bar.show(amount=100, text=f'workers: {self.get_worker_count_string()}')
 					break
 				if time_limit is not None and get_elapsed(start=start_time, unit=time_unit) > time_limit:
+					print()
 					break
 				sleep(0.1)
 
 		except KeyboardInterrupt:
-			self._update_progress_bar(progress_bar=progress_bar)
+			self._update_progress_bar(progress_bar=progress_bar, next_line=True)
 
 	@property
 	def worker_status_table(self):

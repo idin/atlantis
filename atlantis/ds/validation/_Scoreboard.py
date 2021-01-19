@@ -1,6 +1,5 @@
-from ..parallel_computing import TrainingTestTask
-from pandas import DataFrame
-
+from pandas import DataFrame, concat
+import numpy as np
 
 class Score:
 	def __init__(self, main_metric):
@@ -47,29 +46,43 @@ class Scoreboard:
 		self._lowest_is_best = lowest_is_best
 		self._main_metric = main_metric
 
-	def _add_estimator_data_combination(self, estimator_type, estimator_id, data_id):
-		key = estimator_type, estimator_id, data_id
+		self._measured_data = None
+		self._mean_score_per_data = None
+		self._mean_score_per_estimator = None
+		self._best_possible_score_per_estimator = None
+		self._estimator_ranks = None
+		self._data_ranks = None
+
+	@property
+	def lowest_is_best(self):
+		return self._lowest_is_best
+
+	def _add_estimator_data_combination(self, estimator_name, estimator_id, data_id):
+		key = estimator_name, estimator_id, data_id
 		if key not in self._all_combinations:
 			self._all_combinations.add(key)
 			self._unmeasured[key] = Score(main_metric=self._main_metric)
 
-	def add_estimator(self, estimator_type, estimator_id):
-		key = estimator_type, estimator_id
+	def add_estimator(self, estimator_name, estimator_id):
+		if not isinstance(estimator_name, str):
+			raise TypeError(f'estimator_name should be str but it is of type {type(estimator_name)}')
+
+		key = estimator_name, estimator_id
 		if key in self._estimators:
-			raise KeyError(f'estimator {estimator_type}, {estimator_id} already exists!')
+			raise KeyError(f'estimator {key} already exists!')
 		self._estimators.add(key)
 		for data_id in self.data_ids:
 			self._add_estimator_data_combination(
-				estimator_type=estimator_type, estimator_id=estimator_id, data_id=data_id
+				estimator_name=estimator_name, estimator_id=estimator_id, data_id=data_id
 			)
 
 	def add_data_id(self, data_id):
 		if data_id in self._data_ids:
 			raise KeyError(f'data_id: {data_id} already exists!')
 		self._data_ids.add(data_id)
-		for estimator_type, estimator_id in self.estimators:
+		for estimator_name, estimator_id in self.estimators:
 			self._add_estimator_data_combination(
-				estimator_type=estimator_type, estimator_id=estimator_id, data_id=data_id
+				estimator_name=estimator_name, estimator_id=estimator_id, data_id=data_id
 			)
 
 	@property
@@ -86,12 +99,26 @@ class Scoreboard:
 		"""
 		return self._estimators
 
-	def add_score(self, estimator_type, estimator_id, data_id, score_dictionary):
-		score = self._unmeasured[(estimator_type, estimator_id, data_id)]
+	def make_stale(self):
+		self._measured_data = None
+		self._mean_score_per_data = None
+		self._mean_score_per_estimator = None
+		self._best_possible_score_per_estimator = None
+
+	def add_score(self, estimator_name, estimator_id, data_id, score_dictionary):
+		if not isinstance(score_dictionary, dict):
+			raise TypeError(f'score_dictionary should be a dict but it is of type {type(score_dictionary)}')
+		try:
+			score = self._unmeasured[(estimator_name, estimator_id, data_id)]
+		except KeyError as e:
+			display(self._unmeasured)
+			raise e
 		score.score_dictionary = score_dictionary
 
-		self._measured[(estimator_type, estimator_id, data_id)] = score
-		del self._unmeasured[(estimator_type, estimator_id, data_id)]
+		self._measured[(estimator_name, estimator_id, data_id)] = score
+		self.make_stale()
+
+		del self._unmeasured[(estimator_name, estimator_id, data_id)]
 
 	def add_task_score(self, task):
 		"""
@@ -99,118 +126,94 @@ class Scoreboard:
 		"""
 		if task.status == 'done':
 			self.add_score(
-				estimator_type=task.estimator_type,
+				estimator_name=task.estimator_name,
 				estimator_id=task.estimator_id,
-				data_id=task.data_id,
+				data_id=task.data_id_prefix,
 				score_dictionary=task.evaluation
 			)
 		else:
 			raise RuntimeError(f'{task} is not done, it is {task.status}')
 
-	@property
-	def data(self):
-		"""
-		:rtype: DataFrame
-		"""
+	def _get_measured_records(self):
 		records = []
-		for key, score in self._measured.items():
-			estimator_name, estimator_id, data_id = key
-			records.append({
-				'estimator_name': estimator_name, 'estimator_id': estimator_id, 'data_id': data_id, 'score': score.score,
-				'score_upper_bound': score.upper_bound,
-				**score.score_dictionary
-			})
-		return DataFrame.from_records(records)
-
-	def get_scores(self, method):
-		records = []
-
 		for key, score in self._measured.items():
 			estimator_name, estimator_id, data_id = key
 			records.append({
 				'estimator_name': estimator_name, 'estimator_id': estimator_id, 'data_id': data_id,
 				'score': score.score
 			})
-
-		if method == 'actual':
-			return DataFrame.from_records(records)
-
-		elif method in ['estimator_mean', 'mean']:
-			data = DataFrame.from_records(records).rename(columns={'score': 'estimator_mean_score'})
-			return data.drop(columns='data_id').groupby(['estimator_name', 'estimator_id']).mean().reset_index()
-
-		elif method == 'data_mean':
-			data = DataFrame.from_records(records).rename(columns={'score': 'data_mean_score'})
-			return data.drop(columns=['estimator_name', 'estimator_id']).groupby('data_id').mean().reset_index()
-
-		elif method in ['estimator_upper_bound', 'upper_bound']:
-			for key, score in self._unmeasured.items():
-				estimator_name, estimator_id, data_id = key
-				records.append({
-					'estimator_name': estimator_name, 'estimator_id': estimator_id, 'data_id': data_id,
-					'score': self._best_score
-				})
-
-			data = DataFrame.from_records(records).rename(columns={'score': 'estimator_upper_bound_score'})
-			return data.drop(columns='data_id').groupby(['estimator_name', 'estimator_id']).mean().reset_index()
-
-		else:
-			raise ValueError(f'method "{method}" is unknown!')
+		return records
 
 	@property
-	def available_combinations(self):
-		unmeasured_records = [
-			{'estimator_name': estimator_name, 'estimator_id': estimator_id, 'data_id': data_id}
-			for estimator_name, estimator_id, data_id in self._unmeasured.keys()
-		]
-		return DataFrame.from_records(unmeasured_records)
+	def measured_data(self):
+		"""
+		:rtype: DataFrame
+		"""
+		if self._measured_data is None:
+			data = DataFrame.from_records(self._get_measured_records())
+			aggregate = data.groupby(['estimator_name', 'estimator_id']).agg(['count', 'mean', 'min', 'max', 'std'])
+			aggregate.sort_values(by=('score', 'mean'), ascending=self.lowest_is_best, inplace=True)
+			self._measured_data = aggregate
+		return self._measured_data
 
-	def choose_combinations(self, method='upper_bound', num_combinations=1):
-		available_combinations = self.available_combinations
+	def _get_all_records_fill_unmeasured_with_best(self):
+		records = []
+		for key, score in self._measured.items():
+			estimator_name, estimator_id, data_id = key
+			records.append({
+				'estimator_name': estimator_name, 'estimator_id': estimator_id, 'data_id': data_id,
+				'score': score.score
+			})
+		for key in self._unmeasured.keys():
+			estimator_name, estimator_id, data_id = key
+			records.append({
+				'estimator_name': estimator_name, 'estimator_id': estimator_id, 'data_id': data_id,
+				'score': self._best_score
+			})
+		return records
 
-		if num_combinations > available_combinations.shape[1]:
-			raise RuntimeError(
-				f'number of combinations is more than available combinations: {available_combinations.shape[1]}'
-			)
-
-		if method in ['upper_bound', 'mean']:
-			estimator_aggregate = self.get_scores(method=method)
-			if method == 'upper_bound':
-				score_column = 'estimator_upper_bound_score'
+	@property
+	def mean_score_per_data(self):
+		"""
+		:rtype: DataFrame
+		"""
+		if self._mean_score_per_data is None:
+			records = self._get_measured_records()
+			if len(records) == 0:
+				aggregate = DataFrame({'data_id': list(self.data_ids)})
+				aggregate['score'] = None
 			else:
-				score_column = 'estimator_mean_score'
+				data = DataFrame.from_records(self._get_measured_records())
+				data = data[['data_id', 'score']]
+				aggregate = data.groupby('data_id').mean().reset_index()
 
-			estimator_aggregate.rename(columns={score_column: 'estimator_score'}, inplace=True)
+			aggregate.sort_values(by='score', ascending=self.lowest_is_best, inplace=True)
 
-			combination_upper_bounds = available_combinations.merge(
-				right=estimator_aggregate, on=['estimator_name', 'estimator_id'], how='left'
-			)
+			self._mean_score_per_data = aggregate
+		return self._mean_score_per_data
 
-			if combination_upper_bounds.shape[1] > 4:
-				raise RuntimeError(f'data has more than 4 columns: {combination_upper_bounds.columns}')
-			combination_upper_bounds = combination_upper_bounds[
-				['estimator_name', 'estimator_id', 'data_id', 'estimator_score']
-			]
+	@property
+	def mean_score_per_estimator(self):
+		"""
+		:rtype: DataFrame
+		"""
+		if self._mean_score_per_estimator is None:
+			data = DataFrame.from_records(self._get_measured_records())
+			data = data[['estimator_name', 'estimator_id', 'score']]
+			self._mean_score_per_estimator = data.groupby(['estimator_name', 'estimator_id']).mean().reset_index()
+			self._mean_score_per_estimator.sort_values(by='score', ascending=self.lowest_is_best, inplace=True)
+		return self._mean_score_per_estimator
 
-			data_means = self.get_scores(method='data_mean').rename(columns={'data_mean_score': 'data_score'})
+	@property
+	def best_possible_score_per_estimator(self):
+		"""
+		:rtype: DataFrame
+		"""
+		if self._best_possible_score_per_estimator is None:
+			data = DataFrame.from_records(self._get_all_records_fill_unmeasured_with_best())
+			data = data[['estimator_name', 'estimator_id', 'score']]
+			aggregate = data.groupby(['estimator_name', 'estimator_id']).mean().reset_index()
+			aggregate.sort_values(by='score', ascending=self.lowest_is_best, inplace=True)
 
-			combinations = combination_upper_bounds.merge(
-				right=data_means, on='data_id', how='left'
-			)
-			if combinations.shape[1] > 5:
-				raise RuntimeError(f'data has more than 5 columns: {combinations.columns}')
-			combinations = combinations[
-				['estimator_name', 'estimator_id', 'data_id', 'estimator_score', 'data_score']
-			]
-
-			if self._lowest_is_best:
-				ascending = [True, False]
-			else:
-				ascending = [False, True]
-
-			combinations = combinations.sort_values(by=['estimator_score', 'data_score'], ascending=ascending)
-
-		else:
-			raise ValueError(f'method "{method}" is unknown!')
-
-		return combinations.head(num_combinations)
+			self._best_possible_score_per_estimator = aggregate
+		return self._best_possible_score_per_estimator
