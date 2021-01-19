@@ -31,7 +31,7 @@ class Project:
 			'',
 			f'estimators: {len(self.estimators)}',
 			f'data sets: {len(self._data_ids)}',
-			f'tasks: {self.total_num_tasks} (to-do: {self.num_to_do_tasks}, being done: {self.num_tasks_being_done}, done: {self.num_tasks_done})'
+			f'tasks: {self.task_count} (to-do: {self.to_do_count}, being done: {self.being_done_count}, done: {self.done_count})'
 		]
 
 		return '\n'.join(lines)
@@ -133,29 +133,29 @@ class Project:
 		return self._estimators
 
 	@property
-	def num_new_tasks(self):
+	def new_count(self):
 		return len(self._pre_to_do)
 
 	@property
-	def num_to_do_tasks(self):
+	def to_do_count(self):
 		return len(self._to_do)
 
 	@property
-	def num_tasks_being_done(self):
+	def being_done_count(self):
 		return len(self._being_done_ids)
 
 	@property
-	def num_tasks_done(self):
+	def done_count(self):
 		return len(self._done)
 
 	@property
-	def total_num_tasks(self):
-		return self.num_new_tasks + self.num_to_do_tasks + self.num_tasks_being_done + self.num_tasks_done
+	def task_count(self):
+		return self.new_count + self.to_do_count + self.being_done_count + self.done_count
 
 	def contains_task(self, task_id):
 		if isinstance(task_id, Task):
 			raise TypeError('task_id cannot be of type Task!')
-		return task_id in self._to_do or task_id in self._being_done_ids or task_id in self._done
+		return task_id in self._pre_to_do or task_id in self._to_do or task_id in self._being_done_ids or task_id in self._done
 
 	def _take_from_pre_and_add_to_to_do(self, task_id):
 		if task_id in self._pre_to_do:
@@ -164,7 +164,7 @@ class Project:
 		else:
 			raise KeyError(f'task_id {task_id} does not exist in pre-to-do')
 
-	def pop_to_do_task(self):
+	def pop_to_do(self):
 		"""
 		:rtype: Task
 		"""
@@ -217,3 +217,8 @@ class Project:
 
 		self.done_tasks[task.id] = task
 		self.task_ids_of_being_done.remove(task.id)
+
+	def send_to_do(self, num_tasks=None, echo=True, process_done_tasks=True, **kwargs):
+		self._processor.receive_to_do(
+			project_name=self.name, num_tasks=num_tasks, echo=echo, process_done_tasks=process_done_tasks, **kwargs
+		)

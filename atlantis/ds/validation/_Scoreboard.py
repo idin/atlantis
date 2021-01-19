@@ -179,17 +179,20 @@ class Scoreboard:
 		"""
 		if self._mean_score_per_data is None:
 			records = self._get_measured_records()
+			all_data_sets = DataFrame({'data_id': list(self.data_ids)})
 			if len(records) == 0:
-				aggregate = DataFrame({'data_id': list(self.data_ids)})
-				aggregate['score'] = None
+				all_data_sets['score'] = None
+
 			else:
 				data = DataFrame.from_records(self._get_measured_records())
 				data = data[['data_id', 'score']]
 				aggregate = data.groupby('data_id').mean().reset_index()
 
-			aggregate.sort_values(by='score', ascending=self.lowest_is_best, inplace=True)
+				all_data_sets = all_data_sets.merge(aggregate, on='data_id', how='left')
 
-			self._mean_score_per_data = aggregate
+			all_data_sets.sort_values(by='score', ascending=self.lowest_is_best, inplace=True, na_position='first')
+
+			self._mean_score_per_data = all_data_sets
 		return self._mean_score_per_data
 
 	@property

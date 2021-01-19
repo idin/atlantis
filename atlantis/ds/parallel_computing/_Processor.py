@@ -5,8 +5,7 @@ from time import sleep
 from ...time import get_elapsed, get_now
 from ...time.progress import ProgressBar
 
-from ..validation import Validation
-from ..validation import EstimatorRepository
+import atexit
 
 from ._worker import worker
 from ._TimeEstimate import MissingTimeEstimate
@@ -35,6 +34,7 @@ class Processor:
 		self._tasks_by_id = {}
 		self._time_unit = time_unit
 		self._worker_id_counter = 0
+		atexit.register(self.terminate)
 
 	@property
 	def data_ids(self):
@@ -169,7 +169,7 @@ class Processor:
 		)
 		return project
 
-	def load_to_do_tasks(self, project_name=None, num_tasks=None, echo=True, **kwargs):
+	def receive_to_do(self, project_name=None, num_tasks=None, echo=True, process_done_tasks=True, **kwargs):
 		"""
 
 		:param project_name: name of the project
@@ -181,33 +181,40 @@ class Processor:
 		:param echo:
 		:type  echo: bool
 
+		:type  process_done_tasks: bool
+
 		:return:
 		"""
+		if process_done_tasks:
+			self.process_done_tasks()
+
 		if project_name is None:
 			for project_name in self.projects.keys():
-				self.load_to_do_tasks(project_name=project_name, num_tasks=num_tasks, echo=echo, **kwargs)
+				self.receive_to_do(
+					project_name=project_name, num_tasks=num_tasks, echo=echo, process_done_tasks=False, **kwargs
+				)
 
-		self.process_done_tasks()
-		project = self.projects[project_name]
-		project.produce_tasks(ignore_error=True, echo=echo)
-		if num_tasks is not None:
-			if num_tasks > project.num_to_do_tasks:
-				# fill to do list in project
-				num_of_new_tasks = num_tasks - project.num_to_do_tasks
+		else:
+			project = self.projects[project_name]
+			project.produce_tasks(ignore_error=True, echo=echo)
+			if num_tasks is not None:
+				if num_tasks > project.to_do_count:
+					# fill to do list in project
+					num_of_new_tasks = num_tasks - project.to_do_count
 
-				# but cannot get more than what is available
-				num_of_new_tasks = min(num_of_new_tasks, project.num_new_tasks)
+					# but cannot get more than what is available
+					num_of_new_tasks = min(num_of_new_tasks, project.new_count)
 
-				project.fill_to_do_list(num_tasks=num_of_new_tasks, **kwargs)
+					project.fill_to_do_list(num_tasks=num_of_new_tasks, **kwargs)
 
-		loaded_count = 0
-		while project.num_to_do_tasks > 0:
-			task = project.pop_to_do_task()
-			self._to_do.append(task)
-			loaded_count += 1
+			loaded_count = 0
+			while project.to_do_count > 0:
+				task = project.pop_to_do()
+				self._to_do.append(task)
+				loaded_count += 1
 
-		if echo:
-			print(f'{loaded_count} loaded from project {project_name}')
+			if echo:
+				print(f'{loaded_count} loaded from project {project_name}')
 
 	def process_done_tasks(self, ignore_errors=False, echo=True):
 		processed_count = {}
@@ -235,7 +242,7 @@ class Processor:
 				break
 		if echo:
 			for project_name, number in processed_count.items():
-				print(f'{processed_count} tasks from project {project_name} processed.')
+				print(f'{number} tasks from project {project_name} processed.')
 
 	def get_time_estimate(self, task):
 		return self.projects[task.project_name].get_time_estimate(task=task)
@@ -282,7 +289,7 @@ class Processor:
 
 		return total
 
-	def get_worker_count_string(self):
+	def _get_worker_count_string(self):
 		active = 0
 		idle = 0
 		terminated_or_ended = 0
@@ -312,7 +319,7 @@ class Processor:
 		progress_bar.set_total(to_do_count + done_count)
 		progress_bar.show(
 			amount=done_count,
-			text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_worker_count_string()}',
+			text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self._get_worker_count_string()}',
 			next_line=next_line
 		)
 		return to_do_count
@@ -336,7 +343,7 @@ class Processor:
 		done_count = self.count_done()
 		progress_bar.show(
 			amount=done_time,
-			text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self.get_worker_count_string()}',
+			text=f'tasks: {done_count} / {to_do_count + done_count} | workers: {self._get_worker_count_string()}',
 			next_line=next_line
 
 		)
@@ -353,7 +360,7 @@ class Processor:
 				to_do_count = self._update_progress_bar(progress_bar=progress_bar, next_line=False)
 				if to_do_count == 0:
 					progress_bar.set_total(total=100)
-					progress_bar.show(amount=100, text=f'workers: {self.get_worker_count_string()}')
+					progress_bar.show(amount=100, text=f'workers: {self._get_worker_count_string()}')
 					break
 				if time_limit is not None and get_elapsed(start=start_time, unit=time_unit) > time_limit:
 					print()

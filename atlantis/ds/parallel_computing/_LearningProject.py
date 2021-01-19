@@ -41,7 +41,7 @@ class LearningProject(Project):
 		:type 	scoreboard: Scoreboard
 		:param 	scoreboard: a Scoreboard object that keeps score of all estimators, can be added later too
 		"""
-
+		self._temp = set()
 		super().__init__(name=name, time_unit=time_unit, processor=processor)
 		self._data_id_prefixes = set()
 		if problem_type.lower().startswith('reg'):
@@ -318,6 +318,7 @@ class LearningProject(Project):
 
 	def produce_tasks(self, ignore_error=False, echo=True):
 		task_count = 0
+
 		for data_id in self._data_id_prefixes:
 			for estimator_name_and_id, estimator_class_and_arguments in self._estimators.items():
 				estimator_name, estimator_id = estimator_name_and_id
@@ -330,13 +331,20 @@ class LearningProject(Project):
 				)
 				if task is not None:
 					task_count += 1
+					self._temp.add(task_count)
+
 					self._pre_to_do[task.id] = task
 		if echo:
 			print(f'{task_count} tasks produced for project {self.name}')
 
-	def fill_to_do_list(self, num_tasks=1, method='upper_bound', random_state=None, echo=True):
-		if num_tasks > self.num_new_tasks:
-			raise ValueError(f'num_tasks {num_tasks} is too large! There are only {self.num_new_tasks} available')
+	def get_new_to_do_list(self, num_tasks=1, method='upper_bound', random_state=None, echo=True):
+		if num_tasks > self.new_count:
+			raise ValueError(f'num_tasks {num_tasks} is too large! There are only {self.new_count} available')
+		if len(self._pre_to_do) == 0:
+			if echo:
+				print('no new tasks to fill the to-do list')
+			return None
+
 		data = DataFrame.from_records([
 			{
 				'estimator_name': task.estimator_name, 'estimator_id': task.estimator_id, 'data_id': task.data_id_prefix,
@@ -353,14 +361,19 @@ class LearningProject(Project):
 			data = data.merge(best_per_estimator, on=['estimator_name', 'estimator_id'], how='left')
 			if random_state is not None:
 				random.seed(random_state)
+
+			# we want to try the estimators that have the best shot
+			# also we want to avoid repeating the same estimator (hence estimator_repetition counts the number of
+			# times an estimator appears, we put estimator_repetition first because it is useless if it comes after
+			# estimator_score
+			# and we want to prioritize data sets that have the worst outcome, sooner rather than later
+			# on top of all that, when everything is equal, randomize
+
 			data['random'] = random.uniform(size=data.shape[0])
 			if data['estimator_score'].isnull().values.any():
 				raise RuntimeError('there are nulls among estimator_scores')
 
-			if self.scoreboard.lowest_is_best:
-				ascending = [True, False, True]
-			else:
-				ascending = [False, True, False]
+			ascending = [self.scoreboard.lowest_is_best, not self.scoreboard.lowest_is_best, True]
 
 			data.sort_values(
 				by=['estimator_score', 'data_score', 'random'],
@@ -369,15 +382,28 @@ class LearningProject(Project):
 				inplace=True
 			)
 
+			data['estimator_repetition'] = data.groupby(['estimator_name', 'estimator_id']).cumcount()
+			data.sort_values(
+				by=['estimator_repetition', 'estimator_score', 'data_score', 'random'],
+				ascending=[True] + ascending,
+				na_position='first',
+				inplace=True
+			)
+
 		elif method == 'random':
-			data = data.sample(frac=1)
+			data = data.sample(frac=1, random_state=random_state)
 
 		else:
 			raise ValueError(f'method {method} is unknown!')
 
+		return [row['task_id'] for index, row in data.head(num_tasks).iterrows()]
+
+	def fill_to_do_list(self, num_tasks=1, method='upper_bound', random_state=None, echo=True):
+		task_ids = self.get_new_to_do_list(num_tasks=num_tasks, method=method, random_state=random_state, echo=echo)
+
 		filled_count = 0
-		for index, row in data.head(num_tasks).iterrows():
-			self._take_from_pre_and_add_to_to_do(task_id=row['task_id'])
+		for task_id in task_ids:
+			self._take_from_pre_and_add_to_to_do(task_id=task_id)
 			filled_count += 1
 
 		if echo:
