@@ -76,7 +76,7 @@ def read_excel(
 				_find_header_by_columns = [_find_header_by_columns]
 			for i, row in temp.iterrows():
 				if all(
-						convert_camel_to_snake(x) == convert_camel_to_snake(y)
+						convert_camel_to_snake(x, ignore_errors=True) == convert_camel_to_snake(y, ignore_errors=True)
 						for x, y in zip(_find_header_by_columns, row)
 				):
 					result[snake_name] = pd.read_excel(
