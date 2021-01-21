@@ -3,19 +3,22 @@ from sklearn.tree import DecisionTreeClassifier
 from pandas import DataFrame, concat
 from pandas.api.types import is_numeric_dtype
 from .exceptions import NoColumnsError, ImputerNotFittedError
-ROW_NUM_COL = '_imputator_row_number_'
+from ._find_good_columns import find_best_coverage_combination
+ROW_NUM_COL = '_imputer_row_number_'
 
 
 class SingleColumnImputer:
-	def __init__(self, model, column, helper_columns=None, column_type=None):
+	def __init__(self, estimator, column, use_columns, column_type=None):
 		"""
-		:type model: LinearRegression or DecisionTreeClassifier or HyperModel
+		:type estimator: LinearRegression or DecisionTreeClassifier or HyperModel
 		:type column: str
 		"""
 
-		self._model = model
+		self._estimator = estimator
 		self._imputed_column = column
-		self._helper_columns = helper_columns
+		self._helper_columns = None
+		self._coverage = None
+		self._use_columns = use_columns
 		self._fitted = None
 		self._column_type = column_type
 
@@ -23,25 +26,33 @@ class SingleColumnImputer:
 		"""
 		:type X: DataFrame
 		"""
-		y = X[self._imputed_column]
-		X = X.drop(columns=self._imputed_column)
-		if self._helper_columns is None:
-			self._helper_columns = list(X.columns)
-		else:
-			X = X[self._helper_columns]
+		d = find_best_coverage_combination(data=X, column=self._imputed_column)
+		self._helper_columns = [column for column in d['combination'] if column in self._use_columns]
+		self._coverage = d
 
-		if X.shape[1] == 0:
+		data = X[self._helper_columns + [self._imputed_column]]
+
+		training_data = data.dropna(axis=0)
+		training_X = training_data[self._helper_columns]
+		training_y = training_data[self._imputed_column]
+
+		if training_X.shape[1] == 0:
 			raise NoColumnsError('X has no columns!')
-		elif X.shape[0] == 0:
+		elif training_X.shape[0] == 0:
 			raise NoColumnsError('X has no rows!')
 
-		X = X[y.notna()]
-		y = y[y.notna()]
+		if isinstance(self._estimator, type):
+			self._estimator = self._estimator()
 
-		self._model.fit(X, y)
+		try:
+			self._estimator.fit(training_X, training_y)
+		except:
+			display(training_X.head(), training_y.head())
+			raise
+
 		self._fitted = True
 		if self._column_type is None:
-			if is_numeric_dtype(y):
+			if is_numeric_dtype(training_y):
 				self._column_type = 'numerical'
 			else:
 				self._column_type = 'nonnumerical'
@@ -53,10 +64,10 @@ class SingleColumnImputer:
 		else:
 			return 'classifier'
 
-	def imputate_column(self, data):
+	def impute_column(self, data):
 		missing = data[data[self._imputed_column].isna()].copy()
 		not_missing = data[data[self._imputed_column].notna()]
-		missing[self._imputed_column] = self._model.predict(missing[self._helper_columns])
+		missing[self._imputed_column] = self._estimator.predict(missing[self._helper_columns])
 
 		all_data = concat([missing, not_missing]).sort_values(ROW_NUM_COL)
 		return all_data[self._imputed_column]
@@ -67,12 +78,12 @@ class SingleColumnImputer:
 		:rtype: DataFrame
 		"""
 		if not self._fitted:
-			raise ImputerNotFittedError('imputator is not fitted yet!')
+			raise ImputerNotFittedError('imputer is not fitted yet!')
 
 		data = X.copy()
 
 		data[ROW_NUM_COL] = range(data.shape[0])
-		self.imputate_column(data=data)
+		data[self._imputed_column] = self.impute_column(data=data)
 		return data.drop(columns=ROW_NUM_COL)
 
 	def fit_transform(self, X):

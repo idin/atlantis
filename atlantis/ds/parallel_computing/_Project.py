@@ -89,7 +89,7 @@ class Project:
 	def add_data(self, data_id, processor=None, data=None, overwrite=False):
 		"""
 
-		:type 	processor: atlantis.ds.parallel_computing.Processor
+		:type 	processor: atlantis.ds.parallel_computing.Processor or NoneType
 		:param 	data_id:
 		:param 	data:
 		:param 	overwrite:

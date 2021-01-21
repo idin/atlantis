@@ -10,3 +10,4 @@ from ._JupyterContainer import JupyterDictionary, JupyterList, JupyterSet, Jupyt
 from .Series import Series
 from ._create_grid import create_grid
 from ._cross_lists import cross_lists
+from ._get_powerset import get_powerset, get_set_of_subsets

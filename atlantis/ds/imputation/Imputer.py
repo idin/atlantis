@@ -40,7 +40,7 @@ class Imputer:
 			include_columns = [include_columns]
 
 		self._impute_columns = impute_columns
-		self._exclude_columns = exclude_columns
+		self._exclude_columns = exclude_columns or []
 		self._include_columns = include_columns
 
 		if exclude_columns is not None and include_columns is not None:
@@ -51,25 +51,18 @@ class Imputer:
 		self._imputers = {}
 		self._echo = echo
 		self._logs = ''
-		self._helper_columns = None
 
 	def fit(self, X):
 		"""
 		:param DataFrame X: the dataframe to be imputed
 		:rtype: DataFrame
 		"""
-		if self._include_columns is None:
-			numeric_columns = [column for column in X.columns if is_numeric_dtype(X[column])]
-		else:
-			non_existant = [column for column in self._include_columns if column not in X.columns]
-			if len(non_existant) > 0:
-				raise MissingColumnError(f'These columns do not exist in X: {non_existant}')
-
-			non_numeric = [column for column in self._include_columns if not is_numeric_dtype(X[column])]
-			if len(non_numeric) > 0:
-				raise ColumnTypeError(f'These columns are not numeric: {non_numeric}')
-
-			numeric_columns = self._include_columns.copy()
+		# find columns that are only in X and are only numeric and are only in include
+		ok_columns = [column for column in X.columns if is_numeric_dtype(X[column])]
+		if self._include_columns is not None:
+			ok_columns = [x for x in ok_columns if x in self._include_columns]
+		if self._exclude_columns is not None:
+			ok_columns = [x for x in ok_columns if x not in self._exclude_columns]
 
 		impute_columns = self._impute_columns
 		if impute_columns is None:
@@ -84,21 +77,11 @@ class Imputer:
 		elif isinstance(impute_columns, str):
 			impute_columns = [impute_columns]
 
-		if self._exclude_columns is not None:
-			numeric_columns = [column for column in numeric_columns if column not in self._exclude_columns]
-
-		self._helper_columns = [
-			column for column in X.columns
-			if column not in impute_columns and column in numeric_columns
-		]
-		if len(self._helper_columns) == 0:
-			raise NoColumnsError('X has no columns!')
-
 		progress_bar = ProgressBar(total=len(impute_columns), echo=self._echo)
 		progress = 0
 
 		for column in impute_columns:
-			progress_bar.show(amount=progress, text=f'fitting imputator for column: "{column}"')
+			progress_bar.show(amount=progress, text=f'fitting imputer for column: "{column}"')
 			if is_numeric_dtype(X[column]):
 				model = self._regressor
 				column_type = 'numerical'
@@ -106,24 +89,25 @@ class Imputer:
 				model = self._classifier
 				column_type = 'nonnumerical'
 
-			single_column_imputator = SingleColumnImputer(
-				model=model, column=column, column_type=column_type, helper_columns=self._helper_columns
+			single_column_imputer = SingleColumnImputer(
+				estimator=model, column=column, column_type=column_type,
+				use_columns=ok_columns
 			)
-			single_column_imputator.fit(X)
-			self._imputers[column] = single_column_imputator
+			single_column_imputer.fit(X)
+			self._imputers[column] = single_column_imputer
 
 			model_name = model.__class__.__name__
 			if model_name[0].lower() in ['a', 'e', 'i', 'o']:
 				a = 'an'
 			else:
 				a = 'a'
-			self._logs += f'fitted {a} "{model_name}" imputator for the {column_type} column "{column}".\n'
+			self._logs += f'fitted {a} "{model_name}" imputer for the {column_type} column "{column}".\n'
 			progress += 1
-		progress_bar.show(amount=progress, text=f'fitting imputators complete')
+		progress_bar.show(amount=progress, text=f'fitting imputers complete')
 		self._logs += '\n'
 
 	@property
-	def single_column_imputators(self):
+	def single_column_imputers(self):
 		"""
 		:rtype: dict[str, SingleColumnImputer]
 		"""
@@ -137,12 +121,12 @@ class Imputer:
 
 		X = X.copy()
 		X[ROW_NUM_COL] = range(X.shape[0])
-		progress_bar = ProgressBar(total=len(self.single_column_imputators), echo=self._echo)
+		progress_bar = ProgressBar(total=len(self.single_column_imputers), echo=self._echo)
 		progress = 0
-		for column, imputator in self.single_column_imputators.items():
+		for column, imputer in self.single_column_imputers.items():
 			progress_bar.show(amount=progress, text=f'imputating column "{column}"')
-			X[column] = imputator.imputate_column(data=X)
-			self._logs += f'imputated column "{column}".\n'
+			X[column] = imputer.impute_column(data=X)
+			self._logs += f'imputed column "{column}".\n'
 			progress += 1
 		progress_bar.show(amount=progress, text='imputatation complete')
 		self._logs += '\n'

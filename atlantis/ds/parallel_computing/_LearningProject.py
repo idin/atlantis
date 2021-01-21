@@ -16,7 +16,7 @@ class LearningProject(Project):
 		"""
 
 		:type 	name: str
-		:type 	y_column: strx
+		:type 	y_column: str
 
 		:type 	problem_type: str
 		:param 	problem_type: either regression or classification
@@ -123,7 +123,7 @@ class LearningProject(Project):
 
 	def _add_training_test_container(self, data_id_prefix, container, processor=None, overwrite=False):
 		"""
-		:type processor: atlantis.ds.parallel_computing.Processor
+		:type processor: atlantis.ds.parallel_computing.Processor or NoneType
 		:type data_id_prefix: str
 		:type container: TrainingTestContainer
 		:type overwrite: bool

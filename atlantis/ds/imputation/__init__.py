@@ -1,1 +1,3 @@
 from .Imputer import Imputer
+from ._find_good_columns import get_missing_coverage_per_column_subset
+from ._find_good_columns import find_best_coverage_combination
