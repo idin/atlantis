@@ -1,5 +1,5 @@
 from ...exceptions import FunctionNotImplementedError
-
+from pandas import DataFrame
 
 def get_display_function():
 	try:
@@ -14,6 +14,13 @@ class DataContainer:
 		self._data = data
 		self._x_columns = x_columns
 		self._y_column = y_column
+
+	@property
+	def data(self):
+		"""
+		:rtype: DataFrame
+		"""
+		return self._data
 
 	def _repr_pretty_(self, p, cycle):
 		if cycle:

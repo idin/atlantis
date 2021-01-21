@@ -9,17 +9,18 @@ import atexit
 
 from ._worker import worker
 from ._TimeEstimate import MissingTimeEstimate
-from ._Project import Project
-from ._LearningProject import LearningProject
+from .learning import LearningProject
+from .learning import CrossValidationProject
+from ._get_data_from_namespace import get_data_from_namespace, get_obj_from_namespace
+from ._get_data_from_namespace import add_obj_to_namespace
 
 
 class Processor:
 	def __init__(self, time_unit='ms'):
 		self._processes = {}
 		self._manager = multiprocess.Manager()
-		self._data_namespace = self._manager.Namespace()
-		self._data_columns = self._manager.Namespace()
-		self._data_shapes = self._manager.Namespace()
+		self._namespace = self._manager.Namespace()
+		self._namespace_dir = set()
 		self._estimators = {}
 
 		self._to_do = self._manager.list()
@@ -36,33 +37,60 @@ class Processor:
 		self._worker_id_counter = 0
 		atexit.register(self.terminate)
 
-	@property
-	def data_ids(self):
-		"""
-		:rtype list[str]
-		"""
-		return list(self._data_namespace.keys())
+		self._last_error_task = None
 
-	def get_data(self, data_id):
+	@property
+	def namespace(self):
+		return self._namespace
+
+	def add_data(self, data_id, data, overwrite=False):
 		"""
 		:type data_id: int or str
+		:type data: DataFrame
+		:type overwrite: bool
+		"""
+		self.add_obj(obj_type='data', obj_id=data_id, obj=data, overwrite=overwrite)
+		self.add_obj(obj_type='columns', obj_id=data_id, obj=list(data.columns), overwrite=True)
+		self.add_obj(obj_type='shape', obj_id=data_id, obj=data.shape, overwrite=True)
+
+	def add_obj(self, obj_type, obj_id, obj, overwrite=False):
+		add_obj_to_namespace(
+			namespace=self.namespace, obj_type=obj_type, obj_id=obj_id, obj=obj, overwrite=overwrite
+		)
+		self._namespace_dir.add(f'{obj_type}_{obj_id}')
+
+	@property
+	def obj_directory(self):
+		return self._namespace_dir
+
+	def get_data(self, data_id=None, data_slice_id=None):
+		"""
+		:type data_id: int or str
+		:type data_slice_id: int or str
 		:rtype: DataFrame
 		"""
-		return getattr(self._data_namespace, data_id)
+		return get_data_from_namespace(namespace=self.namespace, data_id=data_id, data_slice_id=data_slice_id)
+
+	def get_obj(self, obj_type, obj_id):
+		"""
+		:type obj_id: str
+		:rtype: object
+		"""
+		return get_obj_from_namespace(namespace=self.namespace, obj_type=obj_type, obj_id=obj_id)
 
 	def get_data_columns(self, data_id):
 		"""
 		:type data_id: int or str
 		:rtype: list
 		"""
-		return getattr(self._data_columns, data_id)
+		return getattr(self._namespace, f'columns_{data_id}')
 
 	def get_data_shape(self, data_id):
 		"""
 		:type data_id: int or str
 		:rtype: tuple
 		"""
-		return getattr(self._data_shapes, data_id)
+		return getattr(self._namespace, f'shape_{data_id}')
 
 	def generate_worker_id(self):
 		self._worker_id_counter += 1
@@ -71,31 +99,18 @@ class Processor:
 	@property
 	def projects(self):
 		"""
-		:rtype: dict[str, Project or LearningProject]
+		:rtype: dict[str, LearningProject or CrossValidationProject]
 		"""
 		return self._projects
 
 	def add_project(self, project):
 		"""
-		:type project: Project
+		:type project: LearningProject
 		"""
 		if project.name in self._projects:
 			raise RuntimeError(f'project {project.name} already exists.')
 		self._projects[project.name] = project
 		project._processor = self
-
-	def add_data(self, data_id, data, overwrite=False):
-		"""
-		:type data_id: int or str
-		:type data: DataFrame
-		:type overwrite: bool
-		"""
-		if hasattr(self._data_namespace, data_id):
-			if not overwrite:
-				raise ValueError(f'data {data_id} already exists in the processor')
-		setattr(self._data_namespace, data_id, data)
-		setattr(self._data_columns, data_id, list(data.columns))
-		setattr(self._data_shapes, data_id, data.shape)
 
 	def add_worker(self):
 		"""
@@ -106,7 +121,7 @@ class Processor:
 			target=worker,
 			kwargs={
 				'worker_id': worker_id,
-				'data_namespace': self._data_namespace,
+				'namespace': self._namespace,
 				'to_do': self._to_do,
 				'doing': self._doing,
 				'done': self._done,
@@ -126,7 +141,7 @@ class Processor:
 		for i in range(num_workers):
 			self.add_worker()
 
-	def create_learning_project(
+	def create_cross_validation_project(
 			self, name, y_column, problem_type, x_columns=None, time_unit='ms',
 			evaluation_function=None, main_metric=None, lowest_is_best=None, best_score=None,
 			scoreboard=None
@@ -134,7 +149,7 @@ class Processor:
 		"""
 
 		:type 	name: str
-		:type 	y_column: strx
+		:type 	y_column: str
 
 		:type 	problem_type: str
 		:param 	problem_type: either regression or classification
@@ -159,9 +174,9 @@ class Processor:
 		:type 	scoreboard: Scoreboard
 		:param 	scoreboard: a Scoreboard object that keeps score of all estimators, can be added later too
 
-		:rtype: LearningProject
+		:rtype: CrossValidationProject
 		"""
-		project = LearningProject(
+		project = CrossValidationProject(
 			processor=self,
 			name=name, y_column=y_column, problem_type=problem_type, x_columns=x_columns, time_unit=time_unit,
 			evaluation_function=evaluation_function, main_metric=main_metric, lowest_is_best=lowest_is_best,
@@ -232,7 +247,9 @@ class Processor:
 						processed_count[task.project_name] += 1
 				elif task.status == 'error':
 					if not ignore_errors:
-						raise task._error
+						self._last_error_task = task
+						print(f'trace:{task._errors[0][1]}')
+						raise task._errors[0][0]
 				else:
 					raise RuntimeError(f'do not know what to do with status: {task.status}')
 
@@ -411,14 +428,18 @@ class Processor:
 		return self._done
 
 	def terminate(self, worker_id=None, echo=1):
+		self.stop(worker_id=worker_id)
+		if worker_id is None:
+			sleep(1)
+
 		if worker_id is not None:
 			if worker_id not in self._processes:
 				raise KeyError(f'worker {worker_id}')
 
-			self._proceed_worker[worker_id] = False
 			self._processes[worker_id].terminate()
-			self._to_do.append(self._doing[worker_id])
-			del self._doing[worker_id]
+			if worker_id in self._doing:
+				self._to_do.append(self._doing[worker_id])
+				del self._doing[worker_id]
 			del self._processes[worker_id]
 			if self._worker_status[worker_id] != 'ended':
 				self._worker_status[worker_id] = 'terminated'
@@ -426,7 +447,7 @@ class Processor:
 					print(f'worker {worker_id} terminated!')
 			else:
 				if echo:
-					print(f'worker {worker_id} already ended.')
+					print(f'worker {worker_id} already ended work.')
 
 		else:
 			worker_ids = list(self._processes.keys())

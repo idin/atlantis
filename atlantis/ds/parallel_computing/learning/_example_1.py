@@ -18,7 +18,7 @@ cv = CrossValidation(num_splits=5)
 processor = Processor()
 processor.add_workers(num_workers=8)
 
-project = processor.create_learning_project(name='example', y_column='y', problem_type='regression')
+project = processor.create_cross_validation_project(name='example', y_column='y', problem_type='regression')
 project.add_estimator_repository(repository=repository)
 project.add_validation(data=data, validation=cv, random_state=42)
 display(project)

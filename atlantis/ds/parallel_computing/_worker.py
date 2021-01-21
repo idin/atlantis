@@ -1,13 +1,10 @@
-from pandas import DataFrame
-from sklearn.linear_model import LinearRegression, LogisticRegression
 from multiprocess.managers import Namespace
-from ._LearningProject import LearningProject
 
 
-def worker(worker_id, data_namespace, to_do, doing, done, proceed, status):
+def worker(worker_id, namespace, to_do, doing, done, proceed, status):
 	"""
 	:type worker_id: int or str
-	:type data_namespace: Namespace
+	:type namespace: Namespace
 	:type to_do: list[TrainingTestTask]
 	:type doing: dict[int or str, Task]
 	:type done: list[Task]
@@ -38,11 +35,10 @@ def worker(worker_id, data_namespace, to_do, doing, done, proceed, status):
 
 		try:
 
-			task.do(data_namespace=data_namespace, worker_id=worker_id)
-			task.end(worker_id=worker_id)
+			task.do(namespace=namespace, worker_id=worker_id)
 
 		except Exception as error:
-			task.set_error(error=error)
+			task.add_error(error=error)
 
 		del doing[worker_id]
 		done.append(task)

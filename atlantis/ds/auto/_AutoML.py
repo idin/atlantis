@@ -1,5 +1,5 @@
 from ..parallel_computing import Processor
-from ..parallel_computing import LearningProject
+from ..parallel_computing import CrossValidationProject
 from ..validation import CrossValidation, TimeSeriesValidation, Scoreboard
 from ..validation import EstimatorRepository
 import multiprocess
@@ -17,7 +17,7 @@ class AutoML:
 	@property
 	def projects(self):
 		"""
-		:rtype: dict[str, LearningProject]
+		:rtype: dict[str, CrossValidationProject]
 		"""
 		return self.processor.projects
 
@@ -69,7 +69,7 @@ class AutoML:
 		:type 	random_state: int or NoneType
 		"""
 
-		self._projects[project_name] = LearningProject(
+		self._projects[project_name] = CrossValidationProject(
 			name=project_name, y_column=y_column, problem_type=problem_type, time_unit='ms', evaluation_function=None,
 			main_metric=main_metric
 		)
@@ -99,7 +99,7 @@ class AutoML:
 				training_data=fold.training_data,
 				test_data=fold.test_data
 			)
-			self.score_boards[project_name].add_data_id(data_id=data_id)
+			self.score_boards[project_name].add_training_test_id(training_test_id=data_id)
 
 		# add final test as a new problem
 		final_test_problem_id = f'{project_name}_final_test'

@@ -1,18 +1,12 @@
-from ._Task import Task
-
-
-def get_training_data_id(data_id_prefix):
-	return f'{data_id_prefix}_training'
-
-
-def get_test_data_id(data_id_prefix):
-	return f'{data_id_prefix}_test'
+from atlantis.ds.parallel_computing._Task import Task
+import traceback
+from .._get_data_from_namespace import get_obj_from_namespace, get_data_from_namespace
 
 
 class LearningTask(Task):
 	def __init__(
 			self, project_name, estimator_class, estimator_name, estimator_id, estimator_arguments,
-			data_id_prefix, y_column, x_columns, evaluation_function,
+			training_test_slice_id, y_column, x_columns, evaluation_function,
 	):
 
 		super().__init__(project_name=project_name, task_id=None)
@@ -21,9 +15,6 @@ class LearningTask(Task):
 
 		if not isinstance(project_name, (str, int)):
 			raise TypeError('project_name should be either an int or a str')
-
-		if not isinstance(data_id_prefix, (int, str)):
-			raise TypeError('data_id should be an int or str')
 
 		if not isinstance(estimator_class, type):
 			raise TypeError('estimator_class should be a type')
@@ -35,16 +26,25 @@ class LearningTask(Task):
 			raise TypeError('y_column should be a str')
 
 		self._estimator_id = estimator_id
-		self._data_id_prefix = data_id_prefix
 		self._estimator_class = estimator_class
 		self._estimator_name = estimator_name
 		self._estimator_arguments = estimator_arguments
+
+		self._training_test_id = training_test_slice_id
 		self._y_column = y_column
 		self._x_columns = x_columns
 		self._evaluation_function = evaluation_function
 
 		self._evaluation = None
-		self._id = self.project_name, self.estimator_name, self.estimator_id, self.data_id_prefix, self.y_column
+		self._id = self.project_name, self.estimator_name, self.estimator_id, self.training_test_id, self.y_column
+
+	@property
+	def training_test_id(self):
+		return self._training_test_id
+
+	@property
+	def time_estimate_id(self):
+		return self.estimator_name
 
 	@property
 	def status(self):
@@ -64,10 +64,6 @@ class LearningTask(Task):
 	@property
 	def estimator_name(self):
 		return self._estimator_name
-
-	@property
-	def data_id_prefix(self):
-		return self._data_id_prefix
 
 	@property
 	def estimator_arguments(self):
@@ -99,7 +95,7 @@ class LearningTask(Task):
 			'project_name': self.project_name,
 			'estimator_name': self.estimator_name,
 			'estimator_id': self.estimator_id,
-			'data_id': self.data_id_prefix,
+			'training_test_id': self._training_test_id,
 			'worker_id': self._worker_id,
 			'status': self._status,
 			'starting_time': self.starting_time,
@@ -108,26 +104,35 @@ class LearningTask(Task):
 			**evaluation
 		}
 
-	def do(self, data_namespace, worker_id):
+	def do(self, namespace, worker_id):
 		"""
-		:type data_namespace: Namespace
+		:type namespace: Namespace
 		:type worker_id: int or str
 		"""
 		try:
 			self.start()
 
 			estimator = self.estimator_class(**self.estimator_arguments)
-			training_data = getattr(data_namespace, get_training_data_id(data_id_prefix=self.data_id_prefix))
+			training_test_slice = get_obj_from_namespace(
+				namespace=namespace,
+				obj_type='tts', obj_id=self.training_test_id
+			)
+			data = get_data_from_namespace(namespace=namespace, data_id=training_test_slice.data_id)
+
+			training_data = training_test_slice.get_training_data(data=data)
+			test_data = training_test_slice.get_test_data(data=data)
+
 			training_x = training_data[self.x_columns]
 			training_y = training_data[self.y_column]
 			estimator.fit(X=training_x, y=training_y)
 
-			test_data = getattr(data_namespace, get_test_data_id(data_id_prefix=self.data_id_prefix))
 			test_x = test_data[self.x_columns]
 			actual = test_data[self.y_column]
 			predicted = estimator.predict(test_x)
 			self.evaluate(actual=actual, predicted=predicted)
+			if self._evaluation is None:
+				raise RuntimeError('evaluation is None')
 
 			self.end(worker_id=worker_id)
 		except Exception as error:
-			self.set_error(error=error)
+			self.add_error(error=error, trace=traceback.format_exc())

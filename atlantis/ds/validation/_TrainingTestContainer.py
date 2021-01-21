@@ -12,6 +12,14 @@ class TrainingTestContainer(DataContainer):
 		self._test_indices = test_indices
 
 	@property
+	def training_indices(self):
+		return self._training_indices
+
+	@property
+	def test_indices(self):
+		return self._test_indices
+
+	@property
 	def training_data(self):
 		"""
 		:rtype: DataFrame
