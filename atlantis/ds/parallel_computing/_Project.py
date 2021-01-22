@@ -141,7 +141,10 @@ class Project:
 	def process(self, task):
 		raise NotImplementedError(f'this method should be implemented for class {self.__class__}')
 
-	def fill_to_do_list(self, num_tasks, **kwargs):
+	def produce_tasks(self, **kwargs):
+		raise NotImplementedError(f'this method should be implemented for class {self.__class__}')
+
+	def fill_to_do_list(self, num_tasks, echo=True, **kwargs):
 		raise NotImplementedError(f'this method should be implemented for class {self.__class__}')
 
 	def send_to_do(self, num_tasks=None, echo=True, **kwargs):
@@ -165,7 +168,7 @@ class Project:
 
 		while num_tasks > num_done:
 			progress_bar.show(amount=num_done, text=f'done: {num_done} / {num_tasks} (all tasks)')
-			self.fill_to_do_list(num_tasks=1, **kwargs)
+			self.fill_to_do_list(num_tasks=1, echo=False, **kwargs)
 			task = self.pop_to_do()
 			task.do(namespace=self.processor.namespace, worker_id='main')
 			self.add_done_task(task=task)
