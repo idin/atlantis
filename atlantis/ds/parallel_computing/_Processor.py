@@ -319,9 +319,10 @@ class Processor:
 				terminated_or_ended += 1
 		result = []
 		if active > 0:
-			result.append(f'{active} active')
+			result.append(f'{active} active{", " if idle + terminated_or_ended > 0 else ""}')
+
 		if idle > 0:
-			result.append(f'{idle} idle')
+			result.append(f'{idle} idle{", " if terminated_or_ended > 0 else ""}')
 		if terminated_or_ended > 0:
 			result.append(f'{terminated_or_ended} ended')
 

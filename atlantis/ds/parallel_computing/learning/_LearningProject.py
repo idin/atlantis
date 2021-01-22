@@ -6,6 +6,7 @@ from ...evaluation import evaluate_regression, evaluate_classification
 from .._DataSlice import TrainingTestSlice
 from ...validation import Scoreboard, TrainingTestContainer
 from ._LearningTask import LearningTask
+from ....collections.OrderedSet import OrderedSet
 
 
 class LearningProject(Project):
@@ -44,7 +45,7 @@ class LearningProject(Project):
 		"""
 		super().__init__(name=name, time_unit=time_unit, processor=processor)
 		self._estimators = {}
-		self._training_test_slice_ids = set()
+		self._training_test_slice_ids = OrderedSet()
 
 		if problem_type.lower().startswith('reg'):
 			self._problem_type = 'regression'
