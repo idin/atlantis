@@ -82,6 +82,7 @@ class LearningProject(Project):
 		if scoreboard is None:
 			scoreboard = Scoreboard(main_metric=main_metric, lowest_is_best=lowest_is_best, best_score=best_score)
 		self._scoreboard = scoreboard
+		self._all_tasks_produced = False
 
 	def __repr__(self):
 		lines = [
@@ -147,6 +148,7 @@ class LearningProject(Project):
 			overwrite=overwrite
 		)
 		self.scoreboard.add_training_test_id(training_test_id=training_test_slice_id)
+		self._all_tasks_produced = False
 
 	def add_training_test_container(self, container, training_test_slice_id=None, overwrite=False):
 		"""
@@ -197,6 +199,7 @@ class LearningProject(Project):
 		key = estimator_name, estimator_id
 		self._estimators[key] = {'class': estimator_class, 'arguments': estimator_arguments}
 		self.scoreboard.add_estimator(estimator_name=estimator_name, estimator_id=estimator_id)
+		self._all_tasks_produced = False
 		return estimator_name, estimator_id
 
 	def add_estimator_repository(self, repository):
@@ -290,6 +293,7 @@ class LearningProject(Project):
 
 		if echo:
 			print(f'{task_count} tasks produced for project {self.name}')
+		self._all_tasks_produced = True
 
 	def _get_new_to_do_list(self, num_tasks=1, method='upper_bound', random_state=None, echo=True):
 		if num_tasks > self.new_count:

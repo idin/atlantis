@@ -153,6 +153,8 @@ class Project:
 		)
 
 	def do(self, num_tasks=None, echo=True, **kwargs):
+		if not self._all_tasks_produced:
+			self.produce_tasks(ignore_error=True, echo=echo)
 		num_tasks = min(num_tasks, self.to_do_count + self.new_count)
 		progress_bar = ProgressBar(total=num_tasks, echo=echo)
 
