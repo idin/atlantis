@@ -17,9 +17,9 @@ def split_data(data, count_column, ratios=None, counts=None):
 		cumulative_counts = [x * total_sum for x in cumulative_ratios]
 
 	else:
-		cumulative_counts = cumsum(counts)
+		cumulative_counts = [round(x) for x in cumsum(counts)]
 		if cumulative_counts[-1] != total_sum:
-			raise ValueError(f'total of counts is not {total_sum}')
+			raise ValueError(f'cumulative count {cumulative_counts[-1]} is not equal total_sum {total_sum} ')
 
 	result = []
 	for min_count, max_count in zip([0] + cumulative_counts[:-1], cumulative_counts):

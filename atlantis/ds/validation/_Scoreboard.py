@@ -1,6 +1,15 @@
 from pandas import DataFrame, concat
 import numpy as np
 
+
+def get_display_function():
+	try:
+		from IPython.core.display import display
+		return display
+	except ImportError:
+		return False
+
+
 class Score:
 	def __init__(self, main_metric):
 		self._main_metric = main_metric
@@ -132,7 +141,7 @@ class Scoreboard:
 		else:
 			raise RuntimeError(f'{task} is not done, it is {task.status}')
 
-	def _get_measured_records(self):
+	def _get_measured_records(self, evaluation=False):
 		if len(self.training_test_ids) == 0:
 			raise RuntimeError('training_test_ids is empty')
 		if len(self.estimators) == 0:
@@ -141,11 +150,14 @@ class Scoreboard:
 		records = []
 		for key, score in self._measured.items():
 			estimator_name, estimator_id, training_test_id = key
-			records.append({
+			record = {
 				'estimator_name': estimator_name, 'estimator_id': estimator_id,
 				'training_test_id': training_test_id,
 				'score': score.score
-			})
+			}
+			if evaluation:
+				record = {**record, **score.score_dictionary}
+			records.append(record)
 		return records
 
 	@property
@@ -160,6 +172,12 @@ class Scoreboard:
 			aggregate.sort_values(by=('score', 'mean'), ascending=self.lowest_is_best, inplace=True)
 			self._measured_data = aggregate
 		return self._measured_data
+
+	@property
+	def evaluation_mean(self):
+		records = self._get_measured_records(evaluation=True)
+		data = DataFrame.from_records(records).groupby(['estimator_name', 'estimator_id']).mean().reset_index()
+		return data
 
 	def _get_all_records_fill_unmeasured_with_best(self):
 		records = self._get_measured_records()
@@ -225,3 +243,22 @@ class Scoreboard:
 
 			self._best_possible_score_per_estimator = aggregate
 		return self._best_possible_score_per_estimator
+
+	def _repr_pretty_(self, p, cycle):
+		if cycle:
+			p.text(repr(self))
+		else:
+			self.display(p=p)
+
+	def display(self, num_rows=None, p=None):
+		display = get_display_function()
+		measured_data = self.measured_data
+		if num_rows is not None:
+			measured_data = measured_data.head(num_rows)
+
+		if display is False:
+			print('scoreboard:')
+			print(measured_data)
+		else:
+			print('scoreboard:')
+			display(measured_data)

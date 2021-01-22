@@ -3,7 +3,8 @@ from pandas.api.types import is_numeric_dtype
 from ...time.progress import ProgressBar
 from pandas import DataFrame
 from .exceptions import MissingModelError, IncludeExcludeClashError
-from .exceptions import MissingColumnError, ColumnTypeError, InputError, NoColumnsError
+from .exceptions import InputError
+from copy import deepcopy
 
 
 def get_columns_with_missing_values(data):
@@ -89,10 +90,15 @@ class Imputer:
 				model = self._classifier
 				column_type = 'nonnumerical'
 
+			if model is None:
+				raise RuntimeError(f'no model for {column} which is {X[column].dtype}')
+
+			model = deepcopy(model)
 			single_column_imputer = SingleColumnImputer(
 				estimator=model, column=column, column_type=column_type,
 				use_columns=ok_columns
 			)
+
 			single_column_imputer.fit(X)
 			self._imputers[column] = single_column_imputer
 

@@ -39,6 +39,15 @@ class Processor:
 
 		self._last_error_task = None
 
+	def __repr__(self):
+		lines = [
+			'Processor',
+			f'to-do: {len(self._to_do)}',
+			f'doing: {len(self._doing)}',
+			f'done: {len(self._done)}'
+		]
+		return '\n'.join(lines)
+
 	@property
 	def namespace(self):
 		return self._namespace
@@ -206,7 +215,8 @@ class Processor:
 		if project_name is None:
 			for project_name in self.projects.keys():
 				self.receive_to_do(
-					project_name=project_name, num_tasks=num_tasks, echo=echo, process_done_tasks=False, **kwargs
+					project_name=project_name, num_tasks=num_tasks, echo=echo,
+					process_done_tasks=False, **kwargs
 				)
 
 		else:
