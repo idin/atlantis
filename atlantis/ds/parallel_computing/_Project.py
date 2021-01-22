@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from ...time.progress import ProgressBar
 from ._TimeEstimate import TimeEstimate, MissingTimeEstimate
 from ._Task import Task
 
@@ -143,7 +144,30 @@ class Project:
 	def fill_to_do_list(self, num_tasks, **kwargs):
 		raise NotImplementedError(f'this method should be implemented for class {self.__class__}')
 
-	def send_to_do(self, num_tasks=None, echo=True, process_done_tasks=True, **kwargs):
+	def send_to_do(self, num_tasks=None, echo=True, **kwargs):
 		self._processor.receive_to_do(
-			project_name=self.name, num_tasks=num_tasks, echo=echo, process_done_tasks=process_done_tasks, **kwargs
+			project_name=self.name, num_tasks=num_tasks, echo=echo, process_done_tasks=True, **kwargs
 		)
+
+	def do(self, num_tasks=None, echo=True, **kwargs):
+		num_tasks = min(num_tasks, self.to_do_count + self.new_count)
+		progress_bar = ProgressBar(total=num_tasks, echo=echo)
+
+		num_done = 0
+		to_do_count = self.to_do_count
+		for i in range(to_do_count):
+			progress_bar.show(amount=num_done, text=f'done: {num_done} / {to_do_count} (to-do)')
+			task = self.pop_to_do()
+			task.do(namespace=self.processor.namespace, worker_id='main')
+			self.add_done_task(task=task)
+			num_done += 1
+		progress_bar.show(amount=num_done, text=f'done: {num_done} / {to_do_count} (to-do)')
+
+		while num_tasks > num_done:
+			progress_bar.show(amount=num_done, text=f'done: {num_done} / {num_tasks} (all tasks)')
+			self.fill_to_do_list(num_tasks=1, **kwargs)
+			task = self.pop_to_do()
+			task.do(namespace=self.processor.namespace, worker_id='main')
+			self.add_done_task(task=task)
+			num_done += 1
+		progress_bar.show(amount=num_done, text=f'done: {num_done} / {num_tasks} (all tasks)')
