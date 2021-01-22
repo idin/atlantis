@@ -1,5 +1,5 @@
 from multiprocess.managers import Namespace
-
+from time import sleep
 
 def worker(worker_id, namespace, to_do, doing, done, proceed, status):
 	"""
@@ -34,11 +34,11 @@ def worker(worker_id, namespace, to_do, doing, done, proceed, status):
 			continue
 
 		try:
-
 			task.do(namespace=namespace, worker_id=worker_id)
 
 		except Exception as error:
 			task.add_error(error=error)
+		sleep(0.1)
 
 		del doing[worker_id]
 		done.append(task)

@@ -379,3 +379,25 @@ class LearningProject(Project):
 		if not isinstance(task.evaluation, dict):
 			raise TypeError(f'evaluation is of type {type(task.evaluation)}')
 		self._scoreboard.add_task_score(task=task)
+
+	def get_best_estimators(self, num_estimators=1):
+		scores = self.scoreboard.mean_score_per_estimator.sort_values(
+			'score', ascending=self.scoreboard.lowest_is_best
+		)
+		if scores.shape[0] < num_estimators:
+			raise RuntimeError(f'there are only {scores.shape[0]} estimators to choose from!')
+		result = []
+		for row_num, row in scores.head(num_estimators).iterrows():
+			estimator_name = row['estimator_name']
+			estimator_id = row['estimator_id']
+			score = row['score']
+			dictionary = self.estimators[(estimator_name, estimator_id)]
+			parameters = {
+				'name': estimator_name, 'id': estimator_id, 'class': dictionary['class'], 
+				'arguments': dictionary['arguments']
+			}
+			result.append(parameters)
+		return result
+
+	def get_best_estimator(self):
+		return self.get_best_estimators(num_estimators=1)[0]

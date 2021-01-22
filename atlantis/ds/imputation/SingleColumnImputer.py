@@ -21,6 +21,8 @@ class SingleColumnImputer:
 		self._use_columns = use_columns
 		self._fitted = None
 		self._column_type = column_type
+		if self._estimator is None:
+			raise RuntimeError(f'no estimator provided!')
 
 	def fit(self, X):
 		"""
@@ -41,8 +43,8 @@ class SingleColumnImputer:
 		elif training_X.shape[0] == 0:
 			raise NoColumnsError('X has no rows!')
 
-		if isinstance(self._estimator, type):
-			self._estimator = self._estimator()
+		if self._estimator is None:
+			raise RuntimeError('no estimator')
 
 		try:
 			self._estimator.fit(training_X, training_y)

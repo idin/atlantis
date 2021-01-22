@@ -32,7 +32,7 @@ class CrossValidationProject(LearningProject):
 		self.processor.add_data(data_id=data_id, data=container.data, overwrite=overwrite)
 
 		for i, fold in enumerate(container.folds):
-			training_test_slice_id = f'{id_prefix}{i + 1}'
+			training_test_slice_id = f'{self.name}_{id_prefix}{i + 1}'
 			training_test_slice = TrainingTestSlice(
 				data_id=data_id, training_indices=fold.training_indices, test_indices=fold.test_indices,
 				columns=None
