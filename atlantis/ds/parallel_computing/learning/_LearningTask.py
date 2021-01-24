@@ -1,5 +1,6 @@
 from atlantis.ds.parallel_computing._Task import Task
 import traceback
+from pandas import DataFrame
 from .._get_data_from_namespace import get_obj_from_namespace, get_data_from_namespace
 
 
@@ -37,6 +38,8 @@ class LearningTask(Task):
 
 		self._evaluation = None
 		self._id = self.project_name, self.estimator_name, self.estimator_id, self.training_test_id, self.y_column
+		self._predictions = None
+		self._trained_estimator = None
 
 	@property
 	def training_test_id(self):
@@ -104,7 +107,25 @@ class LearningTask(Task):
 			**evaluation
 		}
 
-	def do(self, namespace, worker_id):
+	@property
+	def predictions(self):
+		"""
+		:rtype: DataFrame
+		"""
+		if self._predictions is None:
+			raise RuntimeError('predictions not available. you should run do() with return_predictions=True')
+		return self._predictions
+
+	@property
+	def trained_estimator(self):
+		"""
+		:rtype: LinearRegression
+		"""
+		if self._trained_estimator is None:
+			raise RuntimeError('trained estimator not available. you should run do() with return_predictions=True')
+		return self._trained_estimator
+
+	def do(self, namespace, worker_id, return_predictions=False):
 		"""
 		:type namespace: Namespace
 		:type worker_id: int or str
@@ -120,6 +141,8 @@ class LearningTask(Task):
 			data = get_data_from_namespace(namespace=namespace, data_id=training_test_slice.data_id)
 
 			training_data = training_test_slice.get_training_data(data=data)
+			training_data = training_data[training_data[self.y_column].notna()]
+
 			test_data = training_test_slice.get_test_data(data=data)
 
 			training_x = training_data[self.x_columns]
@@ -127,9 +150,19 @@ class LearningTask(Task):
 			estimator.fit(X=training_x, y=training_y)
 
 			test_x = test_data[self.x_columns]
-			actual = test_data[self.y_column]
-			predicted = estimator.predict(test_x)
-			self.evaluate(actual=actual, predicted=predicted)
+			actual_all = test_data[self.y_column]
+			actual_evaluation = test_data[test_data[self.y_column].notna()][self.y_column]
+			predicted_all = estimator.predict(test_x)
+			predicted_evaluation = predicted_all[test_data[self.y_column].notna()]
+
+			if return_predictions:
+				result = test_x
+				result['actual'] = actual_all
+				result['predicted'] = predicted_all
+				self._trained_estimator = estimator
+				self._predictions = result
+
+			self.evaluate(actual=actual_evaluation, predicted=predicted_evaluation)
 			if self._evaluation is None:
 				raise RuntimeError('evaluation is None')
 

@@ -2,6 +2,7 @@ from collections import OrderedDict
 from ...time.progress import ProgressBar
 from ._TimeEstimate import TimeEstimate, MissingTimeEstimate
 from ._Task import Task
+import warnings
 
 
 class Project:
@@ -152,7 +153,7 @@ class Project:
 			project_name=self.name, num_tasks=num_tasks, echo=echo, process_done_tasks=True, **kwargs
 		)
 
-	def do(self, num_tasks=None, echo=True, **kwargs):
+	def do(self, num_tasks=None, echo=True, disable_warnings=True, **kwargs):
 		if not self._all_tasks_produced:
 			self.produce_tasks(ignore_error=True, echo=echo)
 		num_tasks = min(num_tasks, self.to_do_count + self.new_count)
@@ -163,7 +164,12 @@ class Project:
 		for i in range(to_do_count):
 			progress_bar.show(amount=num_done, text=f'done: {num_done} / {to_do_count} (to-do)')
 			task = self.pop_to_do()
-			task.do(namespace=self.processor.namespace, worker_id='main')
+			if disable_warnings:
+				with warnings.catch_warnings():
+					warnings.simplefilter('ignore')
+					task.do(namespace=self.processor.namespace, worker_id='main')
+			else:
+				task.do(namespace=self.processor.namespace, worker_id='main')
 			self.add_done_task(task=task)
 			num_done += 1
 		progress_bar.show(amount=num_done, text=f'done: {num_done} / {to_do_count} (to-do)')
@@ -172,7 +178,12 @@ class Project:
 			progress_bar.show(amount=num_done, text=f'done: {num_done} / {num_tasks} (all tasks)')
 			self.fill_to_do_list(num_tasks=1, echo=False, **kwargs)
 			task = self.pop_to_do()
-			task.do(namespace=self.processor.namespace, worker_id='main')
+			if disable_warnings:
+				with warnings.catch_warnings():
+					warnings.simplefilter('ignore')
+					task.do(namespace=self.processor.namespace, worker_id='main')
+			else:
+				task.do(namespace=self.processor.namespace, worker_id='main')
 			self.add_done_task(task=task)
 			num_done += 1
 		progress_bar.show(amount=num_done, text=f'done: {num_done} / {num_tasks} (all tasks)')

@@ -126,7 +126,10 @@ class LearningProject(Project):
 		if self.x_columns is None:
 			self.x_columns = [column for column in data.column if column != self.y_column]
 
-	def add_training_test_slice(self, training_test_slice, data=None, training_test_slice_id=None, overwrite=False):
+	def add_training_test_slice(
+			self, training_test_slice, data=None, training_test_slice_id=None, overwrite=False,
+			add_to_training_test_ids=True
+	):
 		"""
 		:type training_test_slice_id: str
 		:type training_test_slice: TrainingTestSlice
@@ -142,13 +145,17 @@ class LearningProject(Project):
 		x_columns = [column for column in columns if column != self.y_column]
 		self.x_columns = x_columns
 
-		self._training_test_slice_ids.add(training_test_slice_id)
+		if add_to_training_test_ids:
+			self._training_test_slice_ids.add(training_test_slice_id)
+
 		self.processor.add_obj(
 			obj_type='tts', obj_id=training_test_slice_id, obj=training_test_slice,
 			overwrite=overwrite
 		)
-		self.scoreboard.add_training_test_id(training_test_id=training_test_slice_id)
-		self._all_tasks_produced = False
+
+		if add_to_training_test_ids:
+			self.scoreboard.add_training_test_id(training_test_id=training_test_slice_id)
+			self._all_tasks_produced = False
 
 	def add_training_test_container(self, container, training_test_slice_id=None, overwrite=False):
 		"""

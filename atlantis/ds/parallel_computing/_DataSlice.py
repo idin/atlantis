@@ -18,7 +18,10 @@ class DataSlice:
 		"""
 		if self._columns is not None:
 			data = data[self._columns]
-		return data.iloc[self._indices]
+		if self._indices is not None:
+			return data.iloc[self._indices]
+		else:
+			return data
 
 
 class TrainingTestSlice:
