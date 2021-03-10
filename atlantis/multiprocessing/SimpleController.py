@@ -2,13 +2,13 @@ from .BaseController import BaseController
 from ._WorkerReport import WorkerReport
 
 
-class SController(BaseController):
+class SimpleController(BaseController):
 	def do(self, echo=1):
 		worker_id = self._generate_worker_id()
 		report = WorkerReport(worker_id=worker_id)
 		while self.to_do_count > 0:
 			if echo:
-				write(f'To-do: {self.to_do_count} - Doing: 1 - Done: {self.done_count} - Processed: 0       ')
+				self.write(f'To-do: {self.to_do_count} - Doing: 1 - Done: {self.done_count} - Processed: 0       ')
 			task = self.to_do_queue.popleft()
 			self._tasks_status[task.id] = 'started'
 			outcome = task.do(worker_id=worker_id)

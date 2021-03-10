@@ -6,7 +6,7 @@ from ..time.progress import iterate
 from ._DEFAULT_VALUES import TIME_UNIT, N_JOBS
 
 
-class JController(BaseController):
+class JobController(BaseController):
 	def __init__(self, time_unit=TIME_UNIT, n_jobs=N_JOBS):
 		super().__init__(time_unit=time_unit)
 		self._n_jobs = n_jobs
@@ -27,7 +27,7 @@ class JController(BaseController):
 		tasks = []
 		while self.to_do_count > 0:
 			task = self.to_do_queue.popleft()
-			self._task_status[task.id] = 'started'
+			self._tasks_status[task.id] = 'started'
 			tasks.append(task)
 
 		outcomes = processor(
@@ -37,7 +37,7 @@ class JController(BaseController):
 
 		for outcome in outcomes:
 			self.done_queue.append(outcome)
-			self._task_status[outcome.task_id] = 'done'
+			self._tasks_status[outcome.task_id] = 'done'
 			report.add_task_id(task_id=outcome.task_id)
 
 		report.end()

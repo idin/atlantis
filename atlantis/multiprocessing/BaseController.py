@@ -5,21 +5,11 @@ from pandas import DataFrame
 from sys import stdout
 
 from ._Task import Task, Outcome
-from ._WorkerReport import WorkerReport
+from ._DEFAULT_VALUES import TIME_UNIT
 
 
-def write(string, flush=True):
-	"""
-	:type string: str
-	:type flush: bool
-	"""
-	stdout.write('\r' + string)
-	if flush:
-		stdout.flush()
-
-
-class Controller:
-	def __init__(self, time_unit='ms'):
+class BaseController:
+	def __init__(self, time_unit=TIME_UNIT):
 		self._time_unit = time_unit
 		self._to_do_queue = deque()
 		self._done_queue = deque()
@@ -29,6 +19,22 @@ class Controller:
 		self._tasks_status = dict()
 		self._incomplete_task_ids = dict()
 		self._worker_id_counter = 0
+
+	def __repr__(self):
+		return f'<{self.__class__.__name__} with to-do:{self._get_to_do_plus()}, done:{self.done_count}>'
+
+	def _get_to_do_plus(self):
+		return self.to_do_count + self.being_done_count
+
+	@staticmethod
+	def write(string, flush=True):
+		"""
+		:type string: str
+		:type flush: bool
+		"""
+		stdout.write('\r' + string)
+		if flush:
+			stdout.flush()
 
 	@property
 	def system_cpu_count(self):
@@ -40,6 +46,10 @@ class Controller:
 		:rtype: deque[Task] or multiprocessing.Queue[Task]
 		"""
 		return self._to_do_queue
+
+	@property
+	def being_done_count(self):
+		return 0
 
 	@property
 	def done_queue(self):
@@ -103,6 +113,12 @@ class Controller:
 		self._add_task_to_to_do(task=task)
 		return task.id
 
+	def get_full_outcome(self, task_id):
+		return self.processed[task_id]
+
+	def get_result(self, task_id):
+		return self.get_full_outcome(task_id=task_id).result
+
 	@property
 	def incomplete_task_ids(self):
 		"""
@@ -153,24 +169,6 @@ class Controller:
 		self._worker_id_counter += 1
 		return f'{prefix}_{self._worker_id_counter}'
 
-	def do(self, echo=1):
-		worker_id = self._generate_worker_id()
-		report = WorkerReport(worker_id=worker_id)
-		while self.to_do_count > 0:
-			if echo:
-				write(f'To-do: {self.to_do_count} - Doing: 1 - Done: {self.done_count} - Processed: 0       ')
-			task = self.to_do_queue.popleft()
-			self._tasks_status[task.id] = 'started'
-			outcome = task.do(worker_id=worker_id)
-			self.done_queue.append(outcome)
-			self._tasks_status[task.id] = 'done'
-			report.add_task_id(task_id=task.id)
-
-		report.end()
-		if echo:
-			write(f'To-do: {self.to_do_count} - Doing: 0 - Done: {self.done_count} - Processed: 0       ')
-		self.process_done_queue(echo=echo)
-
 	def get_worker_reports_summary(self, exclude_empty_reports=True):
 		result = DataFrame.from_records([
 			report.record
@@ -181,3 +179,6 @@ class Controller:
 				result = result[result['task_count'] > 0]
 			result = result.sort_values('start_time').reset_index(drop=True)
 		return result
+
+	def do(self, *args, **kwargs):
+		raise NotImplementedError('do is not implemented for BaseController')

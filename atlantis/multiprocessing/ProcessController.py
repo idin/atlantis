@@ -6,7 +6,7 @@ from ._do_task import do_task
 from ._DEFAULT_VALUES import *
 
 
-class PController(BaseController):
+class ProcessController(BaseController):
 	def __init__(
 			self,
 			time_unit=TIME_UNIT,
@@ -254,5 +254,5 @@ class PController(BaseController):
 			self.write(string=status['text'] + '\n')
 
 	def do(self, echo=1):
-		return self.wait_for_tasks(echo=echo)
-
+		self.wait_for_tasks(echo=echo)
+		self.process_done_queue(echo=echo)
