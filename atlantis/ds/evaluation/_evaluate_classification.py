@@ -15,10 +15,14 @@ def evaluate_classification(actual, predicted, labels=None):
 	except:
 		pass
 
-	if labels is None:
-		cm = confusion_matrix(actual, predicted)
-	else:
-		cm = confusion_matrix(actual, predicted, labels=labels)
+	try:
+		if labels is None:
+			cm = confusion_matrix(actual, predicted)
+		else:
+			cm = confusion_matrix(actual, predicted, labels=labels)
+	except Exception as e:
+		display(actual, predicted)
+		raise e
 
 	try:
 		true_negative, false_positive, false_negative, true_positive = cm.ravel()
