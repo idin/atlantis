@@ -20,7 +20,11 @@ class ColumnImputer:
 		"""
 		self._imputed_column = column
 		self._helper_columns = helper_columns
+
+		if not isinstance(estimators, (list, tuple)):
+			estimators = [estimators]
 		self._estimators = estimators
+
 		self._cross_validation = cross_validation
 		self._cross_validation_evaluation = None
 		self._drop_na = drop_na
@@ -73,28 +77,42 @@ class ColumnImputer:
 		self._estimator.fit(training_x, training_y)
 		self._x_columns = training_x.columns
 
-	def transform(self, X):
+	def _transform(self, X, return_y):
 		data = X.copy()
 		data[ROW_NUM_COLUMN] = range(data.shape[0])
 
-		missing = data[data[self._imputed_column].isna()].copy()
+		# divide data into two parts, the part that needs no help and the part that needs help
 		not_missing = data[data[self._imputed_column].notna()]
+		missing = data[data[self._imputed_column].isna()].copy()
 
+		if not_missing.shape[0] == 0:
+			raise ValueError(f'all values of the column "{self._imputed_column}" are missing!')
+
+		# the helper columns should not have missing values, let's fix that
 		missing_x = missing[self._helper_columns]
 		if self._na_filler is not None:
 			missing_x = self._na_filler.transform(missing_x)
 			if missing_x.isnull().values.any():
 				raise RuntimeError('transform did not remove missing values')
-		try:
-			if missing.shape[0] > 0:
-				missing[self._imputed_column] = self._estimator.predict(missing_x)
-		except Exception as e:
-			display(missing_x)
-			raise e
+
+		if return_y:
+			df_list = [not_missing[[ROW_NUM_COLUMN, self._imputed_column]]]
+		else:
+			df_list = [not_missing]
 
 		if missing.shape[0] > 0:
-			all_data = concat([missing, not_missing]).sort_values(ROW_NUM_COLUMN)
-		else:
-			all_data = not_missing.sort_values(ROW_NUM_COLUMN)
+			missing[self._imputed_column] = self._estimator.predict(missing_x)
+			if return_y:
+				df_list.append(missing[[ROW_NUM_COLUMN, self._imputed_column]])
+			else:
+				df_list.append(missing)
 
-		return all_data.drop(columns=ROW_NUM_COLUMN)
+		all_data = concat(df_list).sort_values(ROW_NUM_COLUMN)
+
+		if return_y:
+			return all_data[self._imputed_column].values
+		else:
+			return all_data.drop(columns=ROW_NUM_COLUMN)
+
+	def transform(self, X):
+		return self._transform(X=X, return_y=False)
