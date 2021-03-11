@@ -1,6 +1,7 @@
 from ...exceptions import FunctionNotImplementedError
 from pandas import DataFrame
 
+
 def get_display_function():
 	try:
 		from IPython.core.display import display
@@ -10,10 +11,11 @@ def get_display_function():
 
 
 class DataContainer:
-	def __init__(self, data, x_columns=None, y_column=None):
+	def __init__(self, data, x_columns=None, y_column=None, sort_columns=None):
 		self._data = data
 		self._x_columns = x_columns
 		self._y_column = y_column
+		self._sort_columns = sort_columns
 
 	@property
 	def data(self):
@@ -21,6 +23,10 @@ class DataContainer:
 		:rtype: DataFrame
 		"""
 		return self._data
+
+	@property
+	def columns(self):
+		return self._data.columns
 
 	def _repr_pretty_(self, p, cycle):
 		if cycle:

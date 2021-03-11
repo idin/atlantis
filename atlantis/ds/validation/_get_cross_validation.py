@@ -172,7 +172,8 @@ def get_cross_validation(
 	if fold_indices is not None:
 		folds = [
 			TrainingTestContainer(
-				data=data, training_indices=fold['training'], test_indices=fold['test']
+				data=data, training_indices=fold['training'], test_indices=fold['test'],
+				sort_columns=sort_columns
 			)
 			for fold in fold_indices
 		]
@@ -181,8 +182,13 @@ def get_cross_validation(
 
 	return ValidationContainer(
 		data=data, validation_indices=validation_indices, holdout_indices=holdout_indices,
-		folds=folds
+		folds=folds,
+		sort_columns=sort_columns
 	)
 
 
 
+	return TrainingTestContainer(
+		data=data, training_indices=validation.validation_indices, test_indices=validation.holdout_indices,
+		sort_columns=sort_columns
+	)

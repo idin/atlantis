@@ -17,6 +17,11 @@ class Validation:
 		:type sort_columns: NoneType or list[str] or str
 		:type random_state: NoneType or int or float
 		"""
+		if isinstance(id_columns, str):
+			id_columns = [id_columns]
+		if isinstance(sort_columns, str):
+			sort_columns = [sort_columns]
+
 		self._num_splits = num_splits
 		self._id_columns = id_columns
 		self._sort_columns = sort_columns

@@ -10,6 +10,8 @@ def move_columns(data, to, columns=None):
 	:rtype: DataFrame or NoneType
 	"""
 	columns = columns or []
+	if isinstance(columns, str):
+		columns = [columns]
 	other_columns = [column for column in data.columns if column not in columns]
 	if to == 'front':
 		return data[columns + other_columns]
