@@ -405,7 +405,7 @@ class LearningProject(Project):
 			dictionary = self.estimators[(estimator_name, estimator_id)]
 			parameters = {
 				'name': estimator_name, 'id': estimator_id, 'class': dictionary['class'], 
-				'arguments': dictionary['arguments']
+				'arguments': dictionary['arguments'], 'score': score
 			}
 			result.append(parameters)
 		return result

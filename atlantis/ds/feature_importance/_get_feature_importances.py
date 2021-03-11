@@ -19,4 +19,6 @@ def get_feature_importances(model, columns, raise_error=True, **kwargs):
 			for key, value in kwargs.items():
 				importance_dictionary[key] = value
 
-			return importance_dictionary
+			sorted_dictionary = dict(sorted(importance_dictionary.items(), key=lambda item: -abs(item[1])))
+
+			return sorted_dictionary

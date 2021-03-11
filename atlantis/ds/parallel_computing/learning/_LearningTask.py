@@ -1,6 +1,12 @@
 from atlantis.ds.parallel_computing._Task import Task
 import traceback
 from pandas import DataFrame
+import shap
+from xgboost import XGBRegressor, XGBClassifier
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+import matplotlib.pyplot as plt
+from ...feature_importance import get_feature_importances
 from .._get_data_from_namespace import get_obj_from_namespace, get_data_from_namespace
 
 
@@ -40,6 +46,9 @@ class LearningTask(Task):
 		self._id = self.project_name, self.estimator_name, self.estimator_id, self.training_test_id, self.y_column
 		self._predictions = None
 		self._trained_estimator = None
+		self._feature_importances = None
+		self._shap_values = None
+		self._training_x = None
 
 	@property
 	def training_test_id(self):
@@ -125,6 +134,13 @@ class LearningTask(Task):
 			raise RuntimeError('trained estimator not available. you should run do() with return_predictions=True')
 		return self._trained_estimator
 
+	@property
+	def feature_importances(self):
+		"""
+		:rtype: dict
+		"""
+		return self._feature_importances
+
 	def do(self, namespace, worker_id, return_predictions=False):
 		"""
 		:type namespace: Namespace
@@ -161,6 +177,18 @@ class LearningTask(Task):
 				result['predicted'] = predicted_all
 				self._trained_estimator = estimator
 				self._predictions = result
+				self._feature_importances = get_feature_importances(model=estimator, columns=self.x_columns)
+				if isinstance(
+					self.trained_estimator,
+					(
+						XGBRegressor, XGBClassifier,
+						RandomForestClassifier, RandomForestRegressor,
+						DecisionTreeRegressor, DecisionTreeClassifier
+					)
+				):
+					explainer = shap.TreeExplainer(self.trained_estimator)
+					self._shap_values = explainer.shap_values(training_x)
+					self._training_x = training_x
 
 			self.evaluate(actual=actual_evaluation, predicted=predicted_evaluation)
 			if self._evaluation is None:
@@ -169,3 +197,13 @@ class LearningTask(Task):
 			self.end(worker_id=worker_id)
 		except Exception as error:
 			self.add_error(error=error, trace=traceback.format_exc())
+
+	def plot_shap(self, plot_type='bar', show=True, path=None, width=16, height=12):
+		if show:
+			shap.summary_plot(self._shap_values, self._training_x, show=show, plot_type=plot_type)
+		else:
+			figure = plt.gcf()
+			if width is not None and height is not None:
+				figure.set_size_inches(width, height)
+			shap.summary_plot(self._shap_values, self._training_x, show=False, plot_type=plot_type)
+			plt.savefig(path, dpi=300, bbox_inches='tight')

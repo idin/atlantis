@@ -1,7 +1,7 @@
 
 from pandas import DataFrame
 from ...exceptions import MissingArgumentError
-from ._Evaluation import TestResult, TrainingResult, Evaluation
+from ._Evaluation import Evaluation
 from ._DataContainer import get_display_function, DataContainer
 
 
