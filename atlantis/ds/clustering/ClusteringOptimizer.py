@@ -1,6 +1,7 @@
 from pandas import DataFrame
 from joblib import Parallel, delayed
 from math import sqrt
+import matplotlib.pyplot as plt
 
 from ...time.progress import ProgressBar, iterate
 from ...time import get_elapsed, get_now
@@ -22,6 +23,7 @@ class Elbow:
 		self._keep_models = keep_models
 		self._distortions = None
 		self._inertias = None
+		self._silhouette_scores = None
 		self._timeout = timeout
 		self._external_parallelization = external_parallelization
 		self._num_external_jobs = num_external_jobs
@@ -33,16 +35,17 @@ class Elbow:
 
 		self._distortions = {}
 		self._inertias = {}
+		self._silhouette_scores = {}
 
-		def get_inertia_and_distortion(k, num_jobs):
-			kmeans = KMeans(num_clusters=k, num_jobs=num_jobs, timeout=self._timeout, **self._kwargs)
-			kmeans.fit(X=X, raise_timeout=raise_timeout)
+		def get_scores(k, num_jobs):
+			kmeans = KMeans(n_clusters=k, n_jobs=num_jobs, timeout=self._timeout, raise_timeout=raise_timeout, **self._kwargs)
+			kmeans.fit(X=X)
 			if kmeans.timedout:
 				return k, None, None, None
 			if self._keep_models:
-				return k, kmeans, kmeans.inertia, kmeans.distortion
+				return k, kmeans, kmeans.inertia, kmeans.distortion, kmeans.silhouette_score
 			else:
-				return k, None, kmeans.inertia, kmeans.distortion
+				return k, None, kmeans.inertia, kmeans.distortion, kmeans.silhouette_score
 
 		if self._external_parallelization and self._num_jobs > 1:
 
@@ -54,14 +57,15 @@ class Elbow:
 
 			processor = Parallel(n_jobs=num_external_jobs, backend='threading', require='sharedmem')
 			result = processor(
-				delayed(get_inertia_and_distortion)(k=k, num_jobs=num_internal_jobs)
+				delayed(get_scores)(k=k, num_jobs=num_internal_jobs)
 				for k in iterate(iterable=range(self._max_k, self._min_k - 1, -1), echo_items=True)
 			)
 
-			for k, model, inertia, distortion in result:
-				if inertia is not None or distortion is not None:
+			for k, model, inertia, distortion, silhouette_score in result:
+				if inertia is not None or distortion is not None or silhouette_score is not None:
 					self._distortions[k] = distortion
 					self._inertias[k] = inertia
+					self._silhouette_scores[k] = silhouette_score
 					if self._keep_models:
 						self._models[k] = model
 				else:
@@ -76,29 +80,52 @@ class Elbow:
 			for k in range(self._max_k, self._min_k - 1, -1):
 				start_time = get_now()
 				progress_bar.show(amount=self._max_k - k, text=f'j={self._num_jobs}, k={k}{error}, t={round(elapsed)}')
-				k, model, inertia, distortion = get_inertia_and_distortion(k=k, num_jobs=self._num_jobs)
-				if inertia is not None or distortion is not None:
+				k, model, inertia, distortion, silhouette_score = get_scores(k=k, num_jobs=self._num_jobs)
+				if inertia is not None or distortion is not None or silhouette_score is not None:
 					if self._keep_models:
 						self._models[k] = model
 					self._distortions[k] = distortion
 					self._inertias[k] = inertia
+					self._silhouette_scores[k] = silhouette_score
 				else:
 					raise ClusteringError(f'Both inertia and distortion are None for k: {k}')
 				elapsed = max(elapsed, get_elapsed(start=start_time, unit='s'))
 
 			progress_bar.show(amount=progress_bar.total)
 
-	def get_optimal_number_of_clusters(self, by='inertia'):
+	def get_scores(self, by='silhouette_score'):
+		"""
+		:rtype: dict
+		"""
+		if by.startswith('silhouette'):
+			return self._silhouette_scores.copy()
+		elif by.startswith('inertia'):
+			return self._inertias.copy()
+		elif by.startswith('distortion'):
+			return self._distortions.copy()
+
+	def plot(self, by='silhouette_score', size=(16, 8)):
+		scores = self.get_scores(by=by)
+		plt.figure(figsize=size)
+		plt.plot(list(scores.keys()), list(scores.values()), 'bx-')
+		plt.xlabel('k')
+		plt.ylabel(by.replace('_', ' ').capitalize())
+		plt.title('The Elbow Method showing the optimal k')
+		plt.show()
+
+	def get_optimal_number_of_clusters(self, by='silhouette'):
 		"""
 		:param str by: can be 'inertia' or 'distortion'
 		:rtype: int
 		"""
-		x1, x2 = min(self._inertias.keys()), max(self._inertias.keys())
+		x1, x2 = min(self._silhouette_scores.keys()), max(self._silhouette_scores.keys())
 
-		if by == 'inertia':
+		if by.startswith('inertia'):
 			y_dictionary = self._inertias
-		else:
+		elif by.startswith('distort'):
 			y_dictionary = self._distortions
+		else:
+			y_dictionary = {key: -value for key, value in self._silhouette_scores.items()}
 
 		y1, y2 = y_dictionary[x1], y_dictionary[x2]
 		distances = []
@@ -116,10 +143,16 @@ class Elbow:
 		"""
 		:rtype: int
 		"""
-		return max(
-			self.get_optimal_number_of_clusters(by='inertia'),
-			self.get_optimal_number_of_clusters(by='distortion')
-		)
+
+		scores = []
+		for by in ['silhouette', 'inertia', 'distortion']:
+			try:
+				score = self.get_optimal_number_of_clusters(by=by)
+				scores.append(score)
+			except TypeError:
+				continue
+
+		return max(scores)
 
 	@property
 	def records(self):
