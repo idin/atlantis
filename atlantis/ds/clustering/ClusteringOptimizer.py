@@ -10,7 +10,7 @@ from ...exceptions import ClusteringError
 from .KMeans import KMeans
 
 
-class Elbow:
+class ClusteringOptimizer:
 	def __init__(
 			self, min_k, max_k, num_jobs=-1, keep_models=False, timeout=None,
 			external_parallelization=True, num_external_jobs=None, num_internal_jobs=None, **kwargs
@@ -38,12 +38,16 @@ class Elbow:
 		self._silhouette_scores = {}
 
 		def get_scores(k, num_jobs):
-			kmeans = KMeans(n_clusters=k, n_jobs=num_jobs, timeout=self._timeout, raise_timeout=raise_timeout, **self._kwargs)
+			kmeans = KMeans(
+				n_clusters=k, n_jobs=num_jobs, timeout=self._timeout, raise_timeout=raise_timeout, **self._kwargs
+			)
 			kmeans.fit(X=X)
 			if kmeans.timedout:
 				return k, None, None, None
+
 			if self._keep_models:
 				return k, kmeans, kmeans.inertia, kmeans.distortion, kmeans.silhouette_score
+
 			else:
 				return k, None, kmeans.inertia, kmeans.distortion, kmeans.silhouette_score
 
@@ -120,13 +124,20 @@ class Elbow:
 		"""
 		x1, x2 = min(self._silhouette_scores.keys()), max(self._silhouette_scores.keys())
 
+		if by.startswith('silhouette'):
+			return max(self._silhouette_scores, key=self._silhouette_scores.get)
+
 		if by.startswith('inertia'):
 			y_dictionary = self._inertias
+
 		elif by.startswith('distort'):
 			y_dictionary = self._distortions
-		else:
-			y_dictionary = {key: -value for key, value in self._silhouette_scores.items()}
 
+		else:
+			y_dictionary = None
+			ValueError(f'Method "{by}" is not supported!')
+
+		# Elbow method
 		y1, y2 = y_dictionary[x1], y_dictionary[x2]
 		distances = []
 		for x in range(x1, x2 + 1):

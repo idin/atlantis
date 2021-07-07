@@ -1,2 +1,2 @@
 from .KMeans import KMeans
-from .Elbow import Elbow
+from .ClusteringOptimizer import ClusteringOptimizer
