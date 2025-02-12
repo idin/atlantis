@@ -1,0 +1,43 @@
+import pytest
+
+
+import pytest
+from unittest.mock import patch, MagicMock
+from atlantis.ai import OpenAIWrapper  # ✅ Correct import
+
+
+# ✅ Step 1: Mock OpenAI API Response
+@patch("openai.ChatCompletion.create")
+def test_openai_wrapper(mock_openai):
+    # Set up the mock return value
+    mock_openai.return_value = {
+        "choices": [{"message": {"content": "mock response"}}]
+    }
+
+    # ✅ Step 2: Create OpenAIWrapper instance
+    ai = OpenAIWrapper(api_key="fake_api_key")
+
+    # ✅ Step 3: Test a single query
+    response = ai.query("What is the capital of France?")
+    assert response == "mock response"  # Ensure response is returned correctly
+
+    # ✅ Step 4: Ensure memory works
+    assert len(ai.memory) == 2  # Should store user input + AI response
+    assert ai.memory[0] == {"role": "user", "content": "What is the capital of France?"}
+    assert ai.memory[1] == {"role": "assistant", "content": "mock response"}
+
+    # ✅ Step 5: Test conversation continuation
+    mock_openai.return_value = {"choices": [{"message": {"content": "mock follow-up"}}]}
+    response = ai.query("And what is its population?")
+    assert response == "mock follow-up"
+    assert len(ai.memory) == 4  # Should store another user input + AI response
+
+    # ✅ Step 6: Test `clear_memory()`
+    ai.clear_memory()
+    assert len(ai.memory) == 0  # Memory should be cleared
+
+
+# ✅ Run the test manually (if running outside `pytest`)
+if __name__ == "__main__":
+    test_openai_wrapper()
+    print("All tests passed!")

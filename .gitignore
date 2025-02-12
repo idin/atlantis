@@ -1,0 +1,7 @@
+# itnore pycache, build, eggs
+__pycache__/
+build/
+atlantis.egg-info/
+dist/
+
+
