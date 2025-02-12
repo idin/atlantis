@@ -1,4 +1,4 @@
-# Atlantis is a python package for automating data analysis and ML model building
+# Atlantis is a Python package for automating data analysis and ML model building
 
 from setuptools import setup, find_packages
 
