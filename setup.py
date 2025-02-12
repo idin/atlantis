@@ -8,7 +8,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name='atlantis',
-    version='2025.2.6.0',
+    version='2025.2.12.0',
     author='Idin K',
     author_email='python@idin.net',
     description='A Python package for automating data analysis and ML model building',
